@@ -1,0 +1,8 @@
+<svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="40" height="40" rx="11" fill="#C2EF50"/>
+  <path d="M12 13.5H28V17.5H25.5V22H28V26.5H12V22H14.5V17.5H12V13.5Z" fill="#18213C"/>
+  <path d="M18 17.5H22V22H18V17.5Z" fill="#C2EF50"/>
+  <path d="M15 11V14M25 11V14M15 26V29M25 26V29" stroke="#18213C" stroke-width="2" stroke-linecap="round"/>
+  <text x="50" y="18" fill="#18213C" font-family="Arial, sans-serif" font-size="12" font-weight="700">Event</text>
+  <text x="50" y="31" fill="#18213C" font-family="Arial, sans-serif" font-size="12" font-weight="700">Check-In</text>
+</svg>

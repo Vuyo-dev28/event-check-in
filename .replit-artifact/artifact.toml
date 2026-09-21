@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Event Check-In"
+description = "A mobile-first event entrance app for scanning tickets, validating attendees, recording check-ins, and monitoring live event-day activity."
+version = "1.0.0"
+id = "artifacts/event-check-in"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20025
+
+[services.development]
+run = "pnpm --filter @workspace/event-check-in run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/event-check-in", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/event-check-in/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20025"
+BASE_PATH = "/"
