@@ -1,0 +1,7 @@
+{
+  "name": "Event Check-In",
+  "description": "An intuitive event check-in and attendee management dashboard with ticket validation and analytics.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

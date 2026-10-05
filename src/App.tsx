@@ -5,7 +5,8 @@ import {
   SignUp,
   useClerk,
   useUser,
-} from '@clerk/react';
+  isClerkMocked,
+} from '@/lib/clerk-wrapper';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -67,13 +68,13 @@ import {
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(
+const clerkPubKey = isClerkMocked ? undefined : publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 
-if (!clerkPubKey) {
+if (!isClerkMocked && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
 }
 
