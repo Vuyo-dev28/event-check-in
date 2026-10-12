@@ -65,6 +65,11 @@ import {
   useLocation,
   Router as WouterRouter,
 } from 'wouter';
+import festivalNeonBanner from './assets/images/festival_neon_banner_1791200339906.jpg';
+import TicketPdfButton from './components/ticket/TicketPdfButton';
+import BulkTicketPdfButton from './components/ticket/BulkTicketPdfButton';
+import OrganizerDashboard from './components/organizer/OrganizerDashboard';
+import SuperAdminDashboard from './components/superadmin/SuperAdminDashboard';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -227,23 +232,8 @@ const statusMeta: Record<ScanStatus, { label: string; title: string; detail: str
   TRANSFERRED: { label: 'New owner required', title: 'Ticket transferred', detail: 'This ticket has changed owner. Ask the guest to refresh their pass.', tone: 'warning' },
 };
 
-type TicketTier = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  remaining: number;
-  accent: 'lime' | 'coral' | 'blue';
-};
-
-const ticketTiers: TicketTier[] = [
-  { id: 'general', name: 'General admission', description: 'Full summit access, talks, and community floor.', price: 89, remaining: 574, accent: 'lime' },
-  { id: 'vip', name: 'VIP pass', description: 'Priority seating, speaker lounge, and fast entry.', price: 249, remaining: 42, accent: 'coral' },
-  { id: 'speaker', name: 'Speaker circle', description: 'Curated roundtables and private dinner access.', price: 399, remaining: 12, accent: 'blue' },
-];
-
 type DiscoverableEvent = {
-  id: string;
+  id: number;
   name: string;
   date: string;
   venue: string;
@@ -252,16 +242,10 @@ type DiscoverableEvent = {
   description: string;
   price: number;
   accent: 'lime' | 'coral' | 'blue';
-  status: 'Live' | 'Coming soon';
+  status: string;
 };
 
-const discoverableEvents: DiscoverableEvent[] = [
-  { id: 'northstar-product-summit-2024', name: 'Northstar Product Summit', date: '18 June 2024', venue: 'Pier 48', city: 'San Francisco', category: 'Product · Community', description: 'A sharp, practical day for people building what comes next.', price: 89, accent: 'lime', status: 'Live' },
-  { id: 'designing-tomorrow-2024', name: 'Designing Tomorrow', date: '26 July 2024', venue: 'The Foundry', city: 'London', category: 'Design · Culture', description: 'A two-day gathering for the people shaping better experiences.', price: 120, accent: 'coral', status: 'Coming soon' },
-  { id: 'makers-after-dark-2024', name: 'Makers After Dark', date: '09 August 2024', venue: 'The Silo', city: 'Cape Town', category: 'Technology · Nightlife', description: 'An intimate evening of demos, stories, and unexpected collisions.', price: 45, accent: 'blue', status: 'Coming soon' },
-];
-
-const defaultCart = { general: 1, vip: 0, speaker: 0 };
+const defaultCart = {};
 
 function cartStorageKey(userId?: string) {
   return `event-check-in:cart:${userId ?? 'guest'}`;
@@ -276,6 +260,26 @@ function readCart(userId?: string): Record<string, number> {
   } catch {
     return { ...defaultCart };
   }
+}
+
+function mergeCartsOnLogin(userId: string): Record<string, number> {
+  const guestCart = readCart('guest');
+  const userCart = readCart(userId);
+  
+  const merged: Record<string, number> = {};
+  const allKeys = Array.from(new Set([...Object.keys(guestCart), ...Object.keys(userCart)]));
+  
+  for (const key of allKeys) {
+    const guestQty = guestCart[key] ?? 0;
+    const userQty = userCart[key] ?? 0;
+    const maxAllowed = 8;
+    merged[key] = Math.max(0, Math.min(maxAllowed, guestQty + userQty));
+  }
+  
+  window.localStorage.setItem(`event-check-in:cart:${userId}`, JSON.stringify(merged));
+  window.localStorage.removeItem(`event-check-in:cart:guest`);
+  
+  return merged;
 }
 
 type IssuedTicket = {
@@ -300,22 +304,30 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US').format(value);
 }
 
-function AppShell({ children, checkedIn, role }: { children: ReactNode; checkedIn: number; role: AccountRole }) {
-  const [location] = useLocation();
+function AppShell({ children, checkedIn, role, isGuest = false, workspace = 'customer', setWorkspace, meData }: { children: ReactNode; checkedIn: number; role: AccountRole; isGuest?: boolean; workspace?: string; setWorkspace?: any; meData?: any }) {
+  const [location, setLocation] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { signOut } = useClerk();
   const { user } = useUser();
-  const nav = role === 'organizer'
+  
+  const nav = workspace === 'superadmin'
     ? [
-        { href: '/', label: 'Overview', icon: LayoutDashboard },
-        { href: '/check-in', label: 'Check-in', icon: Radio },
-        { href: '/history', label: 'History', icon: History },
-        { href: '/settings', label: 'Settings', icon: SettingsIcon },
+        { href: '/superadmin', label: 'Super Admin Portal', icon: ShieldCheck },
+        { href: '/events', label: 'Browse Events', icon: Sparkles },
+      ]
+    : workspace === 'organizer'
+    ? [
+        { href: '/organizer', label: 'Business Panel', icon: LayoutDashboard },
+        { href: '/check-in', label: 'Gate Scanner', icon: Radio },
+        { href: '/history', label: 'Check-in History', icon: History },
+        { href: '/settings', label: 'Scanner Settings', icon: SettingsIcon },
+        { href: '/events', label: 'Browse Events', icon: Sparkles },
       ]
     : [
-        { href: '/events', label: 'Events', icon: Sparkles },
-        { href: '/cart', label: 'Cart', icon: ShoppingBag },
+        { href: '/events', label: 'Browse Events', icon: Sparkles },
+        { href: '/tickets', label: 'My Tickets', icon: Ticket },
+        { href: '/cart', label: 'My Cart', icon: ShoppingBag },
       ];
   const isScanner = location === '/check-in' || location === '/dashboard/check-in';
 
@@ -332,6 +344,7 @@ function AppShell({ children, checkedIn, role }: { children: ReactNode; checkedI
           </div>
         </div>
         <div className="mb-3 px-3 font-mono text-[9px] uppercase tracking-[.18em] text-sidebar-foreground/40">Event day</div>
+        
         <button data-testid="button-event-selector" className="mb-7 flex w-full items-center justify-between rounded-xl border border-sidebar-border bg-sidebar-accent px-3 py-3 text-left transition hover:bg-sidebar-accent/80">
           <span className="min-w-0">
             <span className="block truncate text-[12px] font-bold">{liveEvent.name}</span>
@@ -360,11 +373,38 @@ function AppShell({ children, checkedIn, role }: { children: ReactNode; checkedI
             <div className="text-2xl font-extrabold tracking-[-.06em]">{formatNumber(checkedIn)}</div>
             <div className="mt-1 text-[10px] text-sidebar-foreground/50">people inside · {liveEvent.activeScanners} scanners online</div>
           </div>
-          <div className="flex items-center gap-2.5 px-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-bold">{(user?.firstName?.[0] ?? 'E')}{(user?.lastName?.[0] ?? 'C')}</div>
-            <div className="min-w-0 flex-1"><div className="truncate text-[11px] font-bold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'Event user'}</div><div className="text-[10px] text-sidebar-foreground/45">{role === 'organizer' ? 'Event organizer' : 'Attendee'}</div></div>
-             <button type="button" data-testid="button-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="rounded-lg p-1 text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground" aria-label="Sign out"><LogOut size={16} /></button>
-          </div>
+          {isGuest ? (
+            <div className="space-y-2 px-2">
+              <button
+                type="button"
+                data-testid="button-sidebar-sign-in"
+                onClick={() => {
+                  console.log("Sign In clicked");
+                  setLocation('/sign-in');
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 cursor-pointer"
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                data-testid="button-sidebar-sign-up"
+                onClick={() => {
+                  console.log("Sign Up clicked");
+                  setLocation('/sign-up');
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/50 py-2.5 text-xs font-bold text-sidebar-foreground transition hover:bg-sidebar-accent cursor-pointer"
+              >
+                Sign Up
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 px-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-bold">{(user?.firstName?.[0] ?? 'E')}{(user?.lastName?.[0] ?? 'C')}</div>
+              <div className="min-w-0 flex-1"><div className="truncate text-[11px] font-bold">{user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'Event user'}</div><div className="text-[10px] text-sidebar-foreground/45">{role === 'organizer' ? 'Event organizer' : 'Attendee'}</div></div>
+              <button type="button" data-testid="button-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="rounded-lg p-1 text-sidebar-foreground/45 hover:bg-sidebar-accent hover:text-sidebar-foreground cursor-pointer" aria-label="Sign out"><LogOut size={16} /></button>
+            </div>
+          )}
         </div>
       </aside>
       <div className="min-w-0 flex-1">
@@ -381,11 +421,78 @@ function AppShell({ children, checkedIn, role }: { children: ReactNode; checkedI
              {role === 'attendee' && <Link href="/events" data-testid="link-browse-events" className="hidden items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-[10px] font-extrabold text-primary-foreground transition hover:brightness-95 sm:flex"><Sparkles size={12} /> Browse events</Link>}
             <div className="hidden items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[10px] font-bold text-muted-foreground sm:flex"><Wifi size={12} className="text-primary" /> Offline-ready</div>
             <button data-testid="button-notifications" onClick={() => setNotificationsOpen(!notificationsOpen)} className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /></button>
-             <button type="button" data-testid="button-header-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="hidden h-8 w-8 items-center justify-center rounded-full bg-secondary text-[10px] font-extrabold text-secondary-foreground sm:flex" aria-label="Sign out"><LogOut size={14} /></button>
+            {isGuest ? (
+              <div className="hidden items-center gap-2 sm:flex">
+                <button
+                  type="button"
+                  data-testid="button-header-sign-in"
+                  onClick={() => {
+                    console.log("Sign In clicked");
+                    setLocation('/sign-in');
+                  }}
+                  className="rounded-full bg-secondary px-3.5 py-1.5 text-[10px] font-extrabold text-secondary-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  data-testid="button-header-sign-up"
+                  onClick={() => {
+                    console.log("Sign Up clicked");
+                    setLocation('/sign-up');
+                  }}
+                  className="rounded-full bg-primary px-3.5 py-1.5 text-[10px] font-extrabold text-primary-foreground hover:brightness-95 transition-all cursor-pointer"
+                >
+                  Sign Up
+                </button>
+              </div>
+            ) : (
+              <button type="button" data-testid="button-header-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="hidden h-8 w-8 items-center justify-center rounded-full bg-secondary text-[10px] font-extrabold text-secondary-foreground sm:flex cursor-pointer" aria-label="Sign out"><LogOut size={14} /></button>
+            )}
           </div>
         </header>
         {notificationsOpen && <div className="absolute right-4 top-[58px] z-50 w-[260px] rounded-2xl border border-border bg-card p-4 shadow-xl"><div className="flex items-center justify-between"><span className="text-xs font-extrabold">Ops notices</span><button data-testid="button-close-notifications" onClick={() => setNotificationsOpen(false)} className="rounded-md p-1 text-muted-foreground hover:bg-muted"><X size={14} /></button></div><div className="mt-3 flex gap-2 rounded-xl bg-primary/15 p-3"><ShieldCheck size={15} className="mt-0.5 shrink-0" /><p className="text-[10px] leading-relaxed">All scanners are synced. No action needed.</p></div></div>}
-         {menuOpen && <div className="absolute left-3 right-3 top-[60px] z-50 rounded-2xl border border-border bg-card p-2 shadow-xl md:hidden">{nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} data-testid={`link-mobile-${label.toLowerCase()}`} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold hover:bg-muted"><Icon size={17} />{label}</Link>)}<button type="button" data-testid="button-mobile-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-destructive hover:bg-destructive/10"><LogOut size={17} />Sign out</button></div>}
+         {menuOpen && (
+           <div className="absolute left-3 right-3 top-[60px] z-50 rounded-2xl border border-border bg-card p-2 shadow-xl md:hidden">
+             {nav.map(({ href, label, icon: Icon }) => (
+               <Link key={href} href={href} onClick={() => setMenuOpen(false)} data-testid={`link-mobile-${label.toLowerCase()}`} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold hover:bg-muted">
+                 <Icon size={17} />{label}
+               </Link>
+             ))}
+             {isGuest ? (
+               <div className="space-y-1">
+                 <button
+                   type="button"
+                   data-testid="button-mobile-sign-in"
+                   onClick={() => {
+                     console.log("Sign In clicked");
+                     setMenuOpen(false);
+                     setLocation('/sign-in');
+                   }}
+                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-primary hover:bg-primary/10 cursor-pointer"
+                 >
+                   <LogOut size={17} />Sign In
+                 </button>
+                 <button
+                   type="button"
+                   data-testid="button-mobile-sign-up"
+                   onClick={() => {
+                     console.log("Sign Up clicked");
+                     setMenuOpen(false);
+                     setLocation('/sign-up');
+                   }}
+                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-foreground hover:bg-muted cursor-pointer"
+                 >
+                   <Sparkles size={17} />Sign Up
+                 </button>
+               </div>
+             ) : (
+               <button type="button" data-testid="button-mobile-sign-out" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-destructive hover:bg-destructive/10 cursor-pointer">
+                 <LogOut size={17} />Sign out
+               </button>
+             )}
+           </div>
+         )}
         <main className={isScanner ? '' : 'mx-auto max-w-[1380px] px-4 pb-24 pt-6 md:px-8 md:pb-10 md:pt-9'}>{children}</main>
       </div>
       <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-card/95 px-3 pt-2 backdrop-blur-lg md:hidden">
@@ -406,7 +513,21 @@ function Overview({ checkedIn }: { checkedIn: number }) {
   const [range, setRange] = useState('Today');
   const [refreshed, setRefreshed] = useState(false);
   const [eventNotice, setEventNotice] = useState(false);
-  const percent = Math.round((checkedIn / liveEvent.sold) * 100);
+  const [totalSold, setTotalSold] = useState(liveEvent.sold);
+
+  useEffect(() => {
+    fetch(`${basePath}/api/overview`)
+      .then(res => res.json())
+      .then(data => {
+        if (typeof data.sold === 'number') {
+          setTotalSold(data.sold);
+        }
+      })
+      .catch(err => console.error('[Overview Sold Sync] Failed:', err));
+  }, [checkedIn]);
+
+  const percent = Math.round((checkedIn / totalSold) * 100);
+  const remaining = Math.max(0, totalSold - checkedIn);
   const barHeights = [22, 31, 28, 43, 52, 67, 59, 78, 62, 82, 74, 92];
   return <div className="drift-in">
     <PageHeading eyebrow="Event day · Tuesday 18 June" title="Good afternoon, Jordan." detail="Here’s the room at a glance. Keep the line moving." action={<button data-testid="button-refresh-overview" onClick={() => { setRefreshed(true); window.setTimeout(() => setRefreshed(false), 1600); }} className="flex items-center gap-2 self-start rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-bold transition hover:bg-muted sm:self-auto"><RefreshCw size={14} className={refreshed ? 'animate-spin' : ''} /> {refreshed ? 'Updated just now' : 'Refresh data'}</button>} />
@@ -420,10 +541,10 @@ function Overview({ checkedIn }: { checkedIn: number }) {
     <section className="grid gap-4 lg:grid-cols-[1.35fr_1fr_1fr]">
       <div className="relative overflow-hidden rounded-2xl bg-secondary p-5 text-secondary-foreground shadow-sm sm:p-6">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full border-[22px] border-primary/10" /><div className="absolute -bottom-20 right-16 h-48 w-48 rounded-full border-[25px] border-primary/5" />
-        <div className="relative flex items-start justify-between"><div><div className="font-mono text-[10px] uppercase tracking-[.18em] text-secondary-foreground/55">Checked in</div><div data-testid="text-checked-in-total" className="mt-3 text-[clamp(3.5rem,7vw,5.8rem)] font-extrabold leading-none tracking-[-.09em]">{formatNumber(checkedIn)}</div><div className="mt-3 flex items-center gap-2 text-xs text-secondary-foreground/65"><span className="flex items-center gap-1 text-primary"><ArrowRight size={13} /> 42 / min</span><span>last 15 minutes</span></div></div><div className="rounded-xl border border-secondary-foreground/15 bg-secondary-foreground/5 px-2.5 py-2 text-right"><div className="font-mono text-[10px] text-secondary-foreground/50">OF {formatNumber(liveEvent.sold)}</div><div className="mt-1 text-xl font-extrabold text-primary">{percent}%</div></div></div>
-        <div className="relative mt-8 h-2 overflow-hidden rounded-full bg-secondary-foreground/15"><div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${percent}%` }} /></div><div className="relative mt-2 flex justify-between font-mono text-[9px] uppercase tracking-wider text-secondary-foreground/45"><span>Doors open 12:00</span><span>{formatNumber(liveEvent.remaining)} expected</span></div>
+        <div className="relative flex items-start justify-between"><div><div className="font-mono text-[10px] uppercase tracking-[.18em] text-secondary-foreground/55">Checked in</div><div data-testid="text-checked-in-total" className="mt-3 text-[clamp(3.5rem,7vw,5.8rem)] font-extrabold leading-none tracking-[-.09em]">{formatNumber(checkedIn)}</div><div className="mt-3 flex items-center gap-2 text-xs text-secondary-foreground/65"><span className="flex items-center gap-1 text-primary"><ArrowRight size={13} /> 42 / min</span><span>last 15 minutes</span></div></div><div className="rounded-xl border border-secondary-foreground/15 bg-secondary-foreground/5 px-2.5 py-2 text-right"><div className="font-mono text-[10px] text-secondary-foreground/50">OF {formatNumber(totalSold)}</div><div className="mt-1 text-xl font-extrabold text-primary">{percent}%</div></div></div>
+        <div className="relative mt-8 h-2 overflow-hidden rounded-full bg-secondary-foreground/15"><div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${percent}%` }} /></div><div className="relative mt-2 flex justify-between font-mono text-[9px] uppercase tracking-wider text-secondary-foreground/45"><span>Doors open 12:00</span><span>{formatNumber(remaining)} expected</span></div>
       </div>
-      <StatCard icon={<Users size={18} />} label="Expected guests" value={formatNumber(liveEvent.sold)} helper="All ticket types" accent="lime" />
+      <StatCard icon={<Users size={18} />} label="Expected guests" value={formatNumber(totalSold)} helper="All ticket types" accent="lime" />
       <StatCard icon={<Radio size={18} />} label="Scanners online" value={`${liveEvent.activeScanners} / 6`} helper={`${liveEvent.activeEntrances} entrances active`} accent="coral" />
     </section>
     <section className="mt-4 grid gap-4 xl:grid-cols-[1.6fr_1fr]">
@@ -496,11 +617,28 @@ function Scanner({ onCheckIn, checkedIn }: { onCheckIn: (ticket: Ticket) => void
     setScanning(false);
   };
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!result || result.status !== 'VALID') return;
-    onCheckIn(result.ticket);
-    setResult({ status: 'CHECKED_IN', ticket: { ...result.ticket, status: 'CHECKED_IN', checkedInAt: 'Just now', checkedInBy: 'You' } });
-    setLastScan('Just now · admitted by you');
+    try {
+      const response = await fetch(`${basePath}/api/check-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: result.ticket.token,
+          staffName: 'You',
+          scannerName: 'iPad Pro · 03',
+          entrance: 'North / A',
+        }),
+      });
+      const data = await response.json();
+      onCheckIn(data.ticket);
+      setResult({ status: 'CHECKED_IN', ticket: { ...data.ticket, checkedInAt: 'Just now', checkedInBy: 'You' } });
+      setLastScan('Just now · checked-in and saved to PostgreSQL');
+    } catch (e) {
+      console.error('[Check-in API] Failed, falling back locally:', e);
+      onCheckIn(result.ticket);
+      setResult({ status: 'CHECKED_IN', ticket: { ...result.ticket, status: 'CHECKED_IN', checkedInAt: 'Just now', checkedInBy: 'You' } });
+    }
     setFlash(true);
     window.setTimeout(() => { setFlash(false); setResult(null); setScanning(true); }, 1500);
   };
@@ -551,7 +689,33 @@ function ScanResultCard({ result, onConfirm, onDismiss }: { result: ScanResult; 
 
 function HistoryPage() {
   const [filter, setFilter] = useState<'All' | 'Valid' | 'Needs review'>('All');
-  const filtered = seedRecords.filter(record => filter === 'All' || filter === 'Valid' ? (filter === 'Valid' ? record.status === 'VALID' : true) : ['INVALID', 'CHECKED_IN'].includes(record.status));
+  const [records, setRecords] = useState<CheckInRecord[]>([]);
+
+  const fetchHistory = () => {
+    fetch(`${basePath}/api/history`)
+      .then(res => res.json())
+      .then(data => {
+        setRecords(data.map((r: any) => ({
+          time: new Date(r.time).toLocaleTimeString('en-US', { hour12: false }),
+          attendee: r.attendeeName,
+          ticket: r.ticketNumber,
+          ticketType: r.ticketType,
+          entrance: r.entrance,
+          staff: r.staffName,
+          scanner: r.scannerName,
+          status: r.status,
+        })));
+      })
+      .catch(err => console.error('[History Sync] Failed:', err));
+  };
+
+  useEffect(() => {
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filtered = records.filter(record => filter === 'All' || filter === 'Valid' ? (filter === 'Valid' ? record.status === 'VALID' : true) : ['INVALID', 'CHECKED_IN'].includes(record.status));
   return <div className="drift-in"><PageHeading eyebrow="Audit trail · Last sync 14:32:12" title="Recent check-ins" detail="Every scan is recorded. Review the last 100 outcomes from all entrances." action={<button data-testid="button-export-history" className="flex items-center gap-2 self-start rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-bold hover:bg-muted sm:self-auto"><ExternalLink size={14} /> Export log</button>} /><div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard icon={<Activity size={18} />} label="Scans today" value="1,312" helper="↑ 8.4% vs yesterday" accent="lime" /><StatCard icon={<CheckCircle2 size={18} />} label="Admitted" value="1,268" helper="96.8% pass rate" accent="lime" /><StatCard icon={<AlertTriangle size={18} />} label="Needs review" value="44" helper="3.2% of scans" accent="coral" /></div><div className="rounded-2xl border border-border bg-card shadow-sm"><div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div className="flex rounded-lg bg-muted p-1">{(['All', 'Valid', 'Needs review'] as const).map(item => <button key={item} data-testid={`button-history-filter-${item.toLowerCase().replace(' ', '-')}`} onClick={() => setFilter(item)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold ${filter === item ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>{item}</button>)}</div><div className="flex items-center gap-2 text-[10px] text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> Live feed · updating automatically</div></div><div className="hidden grid-cols-[1.25fr_.75fr_.8fr_.85fr_.65fr] gap-4 px-5 py-3 font-mono text-[9px] uppercase tracking-[.14em] text-muted-foreground md:grid"><span>Attendee</span><span>Ticket</span><span>Entrance</span><span>Time</span><span>Outcome</span></div><div>{filtered.map((record, index) => <div key={`${record.ticket}-${index}`} data-testid={`row-check-in-${index}`} className="grid gap-2 border-t border-border px-4 py-4 first:border-t-0 md:grid-cols-[1.25fr_.75fr_.8fr_.85fr_.65fr] md:items-center md:gap-4 md:px-5"><div className="flex items-center gap-3"><div className={`flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-extrabold ${record.status === 'VALID' ? 'bg-primary/25' : record.status === 'CHECKED_IN' ? 'bg-accent/20' : 'bg-destructive/15'}`}>{record.attendee.split(' ').map(part => part[0]).join('')}</div><div><div className="text-xs font-extrabold">{record.attendee}</div><div className="text-[10px] text-muted-foreground">{record.ticketType}</div></div></div><span className="font-mono text-[10px] text-muted-foreground">{record.ticket}</span><span className="flex items-center gap-1 text-[10px] text-muted-foreground"><MapPin size={11} /> {record.entrance}</span><span className="font-mono text-[10px] text-muted-foreground">{record.time}</span><StatusPill status={record.status} /></div>)}</div>{filtered.length === 0 && <div className="flex flex-col items-center justify-center px-6 py-16 text-center"><FileClock size={28} className="mb-3 text-muted-foreground" /><h3 className="text-sm font-extrabold">No matching scans</h3><p className="mt-1 text-xs text-muted-foreground">Try another filter or keep the line moving.</p></div>}</div></div>;
 }
 
@@ -576,27 +740,164 @@ function SettingGroup({ title, eyebrow, children }: { title: string; eyebrow: st
 function BuyerCheckout() {
   const { user } = useUser();
   const [step, setStep] = useState<'tickets' | 'details' | 'access' | 'complete'>('tickets');
-  const [quantities, setQuantities] = useState<Record<string, number>>(() => readCart());
+  
+  // Read active event ID from search query parameter
+  const searchParams = new URLSearchParams(window.location.search);
+  const parsedEventParam = Number(searchParams.get('event'));
+  const activeEventId = (!isNaN(parsedEventParam) && parsedEventParam > 0) ? parsedEventParam : 1;
+
+  const [ticketTiers, setTicketTiers] = useState<any[]>([]);
+  const [eventDetails, setEventDetails] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initialize quantities dynamically when ticketTiers are loaded
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
   const [buyer, setBuyer] = useState({ name: '', email: '' });
+  const [assignments, setAssignments] = useState<Record<string, { name: string, email: string }>>({});
   const [issuedOrder, setIssuedOrder] = useState<IssuedOrder | null>(null);
   const [orderError, setOrderError] = useState('');
   const [issuing, setIssuing] = useState(false);
 
-  const selected = ticketTiers.filter((tier) => quantities[tier.id] > 0);
-  const subtotal = selected.reduce((sum, tier) => sum + tier.price * quantities[tier.id], 0);
+  // Promo code states
+  const [promoCodeInput, setPromoCodeInput] = useState('');
+  const [activePromoCode, setActivePromoCode] = useState('');
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [promoError, setPromoError] = useState('');
+  const [validatingPromo, setValidatingPromo] = useState(false);
+
+  // Reservation Countdown timer (10 mins = 600 secs)
+  const [timeLeft, setTimeLeft] = useState(600);
+
+  useEffect(() => {
+    // Save active event ID to localStorage for cart reference
+    window.localStorage.setItem('event-check-in:active-event-id', String(activeEventId));
+
+    Promise.all([
+      fetch(`${basePath}/api/events/${activeEventId}`).then(res => res.json()),
+      fetch(`${basePath}/api/events/${activeEventId}/ticket-types`).then(res => res.json())
+    ]).then(([eventData, typesData]) => {
+      setEventDetails(eventData);
+      
+      const colors = ['lime', 'coral', 'blue'];
+      const mappedTiers = typesData.map((tier: any, index: number) => ({
+        id: String(tier.id),
+        name: tier.name,
+        description: tier.description,
+        price: tier.price,
+        remaining: tier.remaining,
+        accent: colors[index % colors.length],
+      }));
+      setTicketTiers(mappedTiers);
+      
+      // Load quantities from cart
+      const storedCart = readCart();
+      const initialQuantities: Record<string, number> = {};
+      mappedTiers.forEach((tier: any) => {
+        initialQuantities[tier.id] = storedCart[tier.id] || 0;
+      });
+      // If cart is empty, set default first ticket to 1
+      const count = Object.values(initialQuantities).reduce((a, b) => a + b, 0);
+      if (count === 0 && mappedTiers.length > 0) {
+        initialQuantities[mappedTiers[0].id] = 1;
+      }
+      setQuantities(initialQuantities);
+      setLoading(false);
+    }).catch(err => {
+      console.error('Failed to load checkout details:', err);
+      setLoading(false);
+    });
+  }, [activeEventId]);
+
+  useEffect(() => {
+    if (step === 'complete') return;
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  const handleResetReservation = () => {
+    setTimeLeft(600);
+  };
+
+  const handleApplyPromo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPromoError('');
+    setValidatingPromo(true);
+    try {
+      const response = await fetch(`${basePath}/api/promo/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCodeInput }),
+      });
+      const data = await response.json();
+      if (response.ok && data.valid) {
+        setDiscountPercent(data.discountPercent);
+        setActivePromoCode(promoCodeInput.toUpperCase());
+        setPromoCodeInput('');
+      } else {
+        setPromoError(data.error || 'Invalid promo code.');
+      }
+    } catch {
+      setPromoError('Failed to validate promo code.');
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
+
+  // Automatically scroll to the top of the section/viewport when moving between steps and focus the first input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const formSection = document.querySelector('section');
+      if (formSection) {
+        formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const firstInput = formSection.querySelector('input:not([readonly])') as HTMLInputElement | null;
+        if (firstInput) {
+          firstInput.focus();
+        }
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [step]);
+
+  const selected = ticketTiers.filter((tier) => (quantities[tier.id] ?? 0) > 0);
+  const rawSubtotal = selected.reduce((sum, tier) => sum + tier.price * quantities[tier.id], 0);
+  const discountAmt = Math.round(rawSubtotal * (discountPercent / 100));
+  const subtotal = rawSubtotal - discountAmt;
   const serviceFee = Math.round(subtotal * 0.035);
   const total = subtotal + serviceFee;
   const ticketCount = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
 
   useEffect(() => {
     if (!user?.id) return;
-    setQuantities(readCart(user.id));
+    const guestCart = readCart('guest');
+    const userCart = readCart(user.id);
+    const merged = { ...userCart };
+    Object.entries(guestCart).forEach(([k, v]) => {
+      merged[k] = Math.max(0, Math.min(8, (merged[k] || 0) + v));
+    });
+    setQuantities(merged);
   }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
     window.localStorage.setItem(cartStorageKey(user.id), JSON.stringify(quantities));
   }, [quantities, user?.id]);
+
+  useEffect(() => {
+    if (user?.id && step === 'access') {
+      setStep('details');
+    }
+  }, [user?.id, step]);
 
   const updateQuantity = (id: string, delta: number) => {
     setQuantities((current) => ({
@@ -609,14 +910,24 @@ function BuyerCheckout() {
     setIssuing(true);
     setOrderError('');
     try {
+      // Find user token if authenticated
+      const token = (window as any).__firebaseToken;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch(`${basePath}/api/tickets/orders`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           buyerName: buyer.name,
           buyerEmail: buyer.email,
-          items: selected.map((tier) => ({ tierId: tier.id, quantity: quantities[tier.id] })),
+          items: selected.map((tier) => ({ tierId: Number(tier.id), quantity: quantities[tier.id] })),
+          assignments,
+          promoCode: activePromoCode,
+          eventId: activeEventId,
         }),
       });
       const payload = await response.json() as IssuedOrder & { error?: string };
@@ -631,6 +942,14 @@ function BuyerCheckout() {
     }
   };
 
+  if (loading) {
+    return <div className="text-center py-20 text-xs font-bold text-muted-foreground animate-pulse">Entering secure checkout lane...</div>;
+  }
+
+  const activeEventName = eventDetails?.name || 'Northstar Product Summit';
+  const activeEventVenue = eventDetails?.venueName || eventDetails?.address || 'Pier 48, San Francisco';
+  const activeEventDateText = eventDetails?.dateText || 'Today · 18 June 2024';
+
   if (step === 'complete') {
     if (!issuedOrder) return <div className="flex min-h-[40vh] items-center justify-center text-sm font-bold">Preparing your digital tickets…</div>;
     return <div className="drift-in mx-auto max-w-[850px]">
@@ -643,7 +962,7 @@ function BuyerCheckout() {
           <div className="absolute -right-12 -top-20 h-56 w-56 rounded-full border-[28px] border-primary/10" />
           <div className="relative">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground"><CheckCircle2 size={25} strokeWidth={2.5} /></div>
-            <p className="mt-7 font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55">{issuedOrder.event.name}</p>
+            <p className="mt-7 font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55">{issuedOrder.event?.name || activeEventName}</p>
             <h1 className="mt-2 text-[clamp(2rem,5vw,3.4rem)] font-extrabold leading-none tracking-[-.07em]">You’re on the list.</h1>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-secondary-foreground/65">Your unique digital tickets are ready and have been sent to {buyer.email}.</p>
           </div>
@@ -654,12 +973,52 @@ function BuyerCheckout() {
             <div className="mt-4 space-y-3">
               {issuedOrder.tickets.map((ticket) => <div key={ticket.ticketNumber} className="flex items-center justify-between border-b border-secondary-foreground/10 pb-3 text-xs"><span><span className="font-bold">{ticket.ticketType}</span><span className="ml-2 text-secondary-foreground/50">{ticket.ticketNumber}</span></span><span className="font-mono">Valid</span></div>)}
             </div>
-            <div className="mt-5 flex items-center gap-2 text-[10px] text-secondary-foreground/55"><CalendarDays size={13} /> {issuedOrder.event.date} · {issuedOrder.event.venue}</div>
+            <div className="mt-5 flex items-center gap-2 text-[10px] text-secondary-foreground/55"><CalendarDays size={13} /> {issuedOrder.event?.date || activeEventDateText} · {issuedOrder.event?.venue || activeEventVenue}</div>
             <div className="mt-2 flex items-center gap-2 text-[10px] text-secondary-foreground/55"><UserRound size={13} /> {buyer.name} · {buyer.email}</div>
             <div className={`mt-6 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-bold ${issuedOrder.emailStatus === 'sent' ? 'border-primary/30 bg-primary/10' : 'border-accent/30 bg-accent/10'}`}><Info size={13} /> {issuedOrder.emailStatus === 'sent' ? 'Ticket email sent' : 'Tickets created, but email delivery needs a retry'}</div>
+            
+            <div className="mt-8 flex flex-wrap gap-3 items-center">
+              {issuedOrder.tickets.length > 1 && (
+                <BulkTicketPdfButton tickets={issuedOrder.tickets.map(t => ({
+                  id: t.ticketId || 0,
+                  token: t.token || '',
+                  ticketNumber: t.ticketNumber,
+                  type: t.ticketType,
+                  eventName: t.eventName || activeEventName,
+                  attendeeName: t.attendeeName,
+                  attendeeEmail: t.attendeeEmail,
+                  status: 'VALID',
+                }))} />
+              )}
+              <Link href="/tickets" className="inline-flex items-center justify-center gap-2 rounded-xl bg-secondary px-5 py-3 text-xs font-extrabold text-secondary-foreground hover:brightness-95">
+                <Ticket size={14} /> Go to My Tickets
+              </Link>
+              <Link href="/events" className="inline-flex items-center justify-center gap-2 rounded-xl border border-secondary-foreground/15 px-5 py-3 text-xs font-bold text-secondary-foreground hover:bg-secondary-foreground/10">
+                Browse more events
+              </Link>
+            </div>
           </div>
           <div className="space-y-3">
-            {issuedOrder.tickets.map((ticket) => <div key={ticket.ticketNumber} className="flex flex-col items-center justify-center rounded-2xl bg-card p-4 text-foreground"><img src={ticket.qrDataUrl} alt={`QR code for ${ticket.ticketNumber}`} className="h-[132px] w-[132px] rounded-lg border-8 border-white bg-white" /><div className="mt-3 font-mono text-[10px] font-bold tracking-wider">{ticket.ticketNumber}</div><div className="mt-1 text-[9px] text-muted-foreground">Show at the entrance</div></div>)}
+            {issuedOrder.tickets.map((ticket) => {
+              const ticketData = {
+                id: ticket.ticketId || 0,
+                token: ticket.token || '',
+                ticketNumber: ticket.ticketNumber,
+                type: ticket.ticketType,
+                eventName: ticket.eventName || activeEventName,
+                attendeeName: ticket.attendeeName,
+                attendeeEmail: ticket.attendeeEmail,
+                status: 'VALID' as const,
+              };
+              return (
+                <div key={ticket.ticketNumber} className="flex flex-col items-center justify-center rounded-2xl bg-card p-4 text-foreground border border-border shadow-xs">
+                  <img src={ticket.qrDataUrl} alt={`QR code for ${ticket.ticketNumber}`} className="h-[132px] w-[132px] rounded-lg border-8 border-white bg-white" />
+                  <div className="mt-3 font-mono text-[10px] font-bold tracking-wider">{ticket.ticketNumber}</div>
+                  <div className="mt-1 text-[9px] text-muted-foreground mb-3">Show at the entrance</div>
+                  <TicketPdfButton ticket={ticketData} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -667,7 +1026,7 @@ function BuyerCheckout() {
   }
 
   return <div className="drift-in mx-auto max-w-[1180px]">
-    <PageHeading eyebrow="Public ticketing · Northstar Product Summit" title="Bring your people to Northstar." detail="Choose passes, share attendee details, and get a digital ticket ready for the door." action={<span className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 font-mono text-[10px] font-bold text-muted-foreground"><ShieldCheck size={13} className="text-primary" /> Secure checkout</span>} />
+    <PageHeading eyebrow={`Public ticketing · ${activeEventName}`} title={`Bring your people to ${activeEventName.split(' ')[0]}.`} detail="Choose passes, share attendee details, and get a digital ticket ready for the door." action={<span className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 font-mono text-[10px] font-bold text-muted-foreground"><ShieldCheck size={13} className="text-primary" /> Secure checkout</span>} />
     <div className="mb-6 flex items-center gap-2 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-xs text-muted-foreground"><Info size={15} className="shrink-0 text-primary" /><span><strong className="text-foreground">Secure ticket issuance.</strong> After you complete checkout, each ticket gets a unique QR code and is emailed to the attendee.</span></div>
     <div className="grid gap-5 lg:grid-cols-[1.25fr_.75fr]">
       <div className="space-y-4">
@@ -676,20 +1035,168 @@ function BuyerCheckout() {
             <div className="flex items-start gap-4">
               <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tier.accent === 'lime' ? 'bg-primary/25' : tier.accent === 'coral' ? 'bg-accent/20' : 'bg-chart-3/15'}`}><Ticket size={20} /></div>
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-base font-extrabold tracking-[-.03em]">{tier.name}</h2><p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">{tier.description}</p></div><div className="text-right"><div className="text-xl font-extrabold tracking-[-.05em]">${tier.price}</div><div className="font-mono text-[9px] uppercase text-muted-foreground">per person</div></div></div>
-                <div className="mt-5 flex items-center justify-between gap-3"><span className="font-mono text-[10px] text-muted-foreground">{formatNumber(tier.remaining)} remaining</span><div className="flex items-center gap-2 rounded-xl bg-muted p-1"><button data-testid={`button-decrease-${tier.id}`} onClick={() => updateQuantity(tier.id, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-card"><Minus size={14} /></button><span data-testid={`text-quantity-${tier.id}`} className="w-7 text-center text-xs font-extrabold">{quantities[tier.id]}</span><button data-testid={`button-increase-${tier.id}`} onClick={() => updateQuantity(tier.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-card shadow-sm hover:bg-primary/20"><Plus size={14} /></button></div></div>
+                <div className="mt-5 flex items-center justify-between gap-3"><span className="font-mono text-[10px] text-muted-foreground">{formatNumber(tier.remaining)} remaining</span><div className="flex items-center gap-2 rounded-xl bg-muted p-1"><button data-testid={`button-decrease-${tier.id}`} onClick={() => updateQuantity(tier.id, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-card"><Minus size={14} /></button><span data-testid={`text-quantity-${tier.id}`} className="w-7 text-center text-xs font-extrabold">{quantities[tier.id] || 0}</span><button data-testid={`button-increase-${tier.id}`} onClick={() => updateQuantity(tier.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-card shadow-sm hover:bg-primary/20"><Plus size={14} /></button></div></div>
               </div>
             </div>
           </div>)}
         </section>}
-        {step === 'details' && <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"><button data-testid="button-back-to-tickets" onClick={() => setStep('tickets')} className="mb-6 flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground"><ArrowLeft size={14} /> Back to ticket types</button><div className="mb-6"><div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Attendee details</div><h2 className="mt-2 text-2xl font-extrabold tracking-[-.06em]">Where should we send your tickets?</h2><p className="mt-2 text-xs text-muted-foreground">One order contact is enough. You can share individual tickets after checkout.</p></div><div className="space-y-4"><label className="block"><span className="mb-2 block text-xs font-bold">Full name</span><input data-testid="input-buyer-name" value={buyer.name} onChange={(event) => setBuyer({ ...buyer, name: event.target.value })} placeholder="Jordan Reyes" className="w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary" /></label><label className="block"><span className="mb-2 block text-xs font-bold">Email address</span><input data-testid="input-buyer-email" type="email" value={buyer.email} onChange={(event) => setBuyer({ ...buyer, email: event.target.value })} placeholder="you@example.com" className="w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary" /></label></div></section>}
-         {step === 'access' && <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"><button data-testid="button-back-to-details" onClick={() => setStep('details')} className="mb-6 flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground"><ArrowLeft size={14} /> Back to details</button><div className="mb-6"><div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Checkout access</div><h2 className="mt-2 text-2xl font-extrabold tracking-[-.06em]">How would you like to continue?</h2><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Create an account to access order history and future tickets, or continue as a guest and receive your pass by email.</p></div><div className="grid gap-3"><Link href="/sign-in" data-testid="link-checkout-sign-in" className="flex items-center justify-between rounded-2xl border border-border bg-background p-4 text-sm font-extrabold hover:border-primary"><span><span className="block">Log in</span><span className="mt-1 block text-[10px] font-normal text-muted-foreground">Use your existing Event Check-In account</span></span><ArrowRight size={16} /></Link><Link href="/sign-up" data-testid="link-checkout-sign-up" className="flex items-center justify-between rounded-2xl border border-primary/50 bg-primary/10 p-4 text-sm font-extrabold hover:bg-primary/20"><span><span className="block">Create an account</span><span className="mt-1 block text-[10px] font-normal text-muted-foreground">Keep your tickets and order history together</span></span><ArrowRight size={16} /></Link><button type="button" data-testid="button-continue-as-guest" disabled={!buyer.name.trim() || !buyer.email.trim() || issuing} onClick={() => { setGuestCheckout(true); void completeOrder(); }} className="flex items-center justify-between rounded-2xl border border-border bg-background p-4 text-left text-sm font-extrabold hover:border-secondary"><span><span className="block">Continue as guest</span><span className="mt-1 block text-[10px] font-normal text-muted-foreground">No account required; your ticket will be emailed</span></span><ArrowRight size={16} /></button></div></section>}
+        {step === 'details' && <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
+          <button data-testid="button-back-to-tickets" onClick={() => setStep('tickets')} className="mb-6 flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground"><ArrowLeft size={14} /> Back to ticket types</button>
+          
+          <div className="mb-6">
+            <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Order Contact</div>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-[-.06em]">Who is buying?</h2>
+            <p className="mt-2 text-xs text-muted-foreground">This email will receive the order receipt and confirmation logs.</p>
+          </div>
+          
+          <div className="grid gap-4 sm:grid-cols-2 mb-8">
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold">Buyer Full Name</span>
+              <input data-testid="input-buyer-name" value={buyer.name} onChange={(event) => setBuyer({ ...buyer, name: event.target.value })} placeholder="Jordan Reyes" className="w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold">Buyer Email Address</span>
+              <input data-testid="input-buyer-email" type="email" value={buyer.email} onChange={(event) => setBuyer({ ...buyer, email: event.target.value })} placeholder="buyer@example.com" className="w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary" />
+            </label>
+          </div>
+
+          <div className="mb-6 border-t border-border/70 pt-6">
+            <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Howler Ticket Assignment</div>
+            <h2 className="mt-2 text-xl font-extrabold tracking-[-.04em]">Assign individual tickets</h2>
+            <p className="mt-2 text-xs text-muted-foreground">Howler requires each ticket to be assigned to the attendee who will scan in. Enter their details below.</p>
+          </div>
+
+          <div className="space-y-6">
+            {selected.flatMap((tier) => 
+              Array.from({ length: quantities[tier.id] || 0 }).map((_, index) => {
+                const key = `${tier.id}-${index}`;
+                return (
+                  <div key={key} className="rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <h4 className="text-xs font-extrabold">{tier.name} — Pass #{index + 1}</h4>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold text-muted-foreground">Attendee Name</span>
+                        <input 
+                          value={assignments[key]?.name || ''} 
+                          onChange={(e) => setAssignments({ ...assignments, [key]: { name: e.target.value, email: assignments[key]?.email || '' } })}
+                          placeholder={buyer.name || "Friend's name"} 
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" 
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-bold text-muted-foreground">Attendee Email</span>
+                        <input 
+                          type="email"
+                          value={assignments[key]?.email || ''} 
+                          onChange={(e) => setAssignments({ ...assignments, [key]: { name: assignments[key]?.name || '', email: e.target.value } })}
+                          placeholder={buyer.email || "friend@example.com"} 
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:border-primary" 
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>}
+          {step === 'access' && (
+            <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
+              <button data-testid="button-back-to-details" onClick={() => setStep('details')} className="mb-6 flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground">
+                <ArrowLeft size={14} /> Back to details
+              </button>
+              <div className="mb-6">
+                <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Checkout Access</div>
+                <h2 className="mt-2 text-2xl font-extrabold tracking-[-.06em]">One step left to complete purchase</h2>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  To secure your tickets, save them in your digital pass wallet, and activate your RFID cashless event wristband, please connect your account.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-border bg-background p-6 space-y-4 text-center">
+                <p className="text-xs font-bold text-muted-foreground">Connect securely using your Google Credentials:</p>
+                <SignIn />
+              </div>
+            </section>
+          )}
       </div>
       <aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-sm lg:sticky lg:top-24">
-        <div className="mb-5 flex items-center justify-between"><div><div className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">Your order</div><h2 className="mt-1 text-base font-extrabold">Northstar summit</h2></div><ShoppingBag size={18} className="text-muted-foreground" /></div>
-        <div className="mb-5 flex items-center gap-2 rounded-xl bg-muted/60 p-3 text-[10px] text-muted-foreground"><CalendarDays size={14} className="text-foreground" /><span>Today · 18 June 2024<br /><strong className="text-foreground">Pier 48 · San Francisco</strong></span></div>
+        {timeLeft > 0 ? (
+          <div className="mb-4 flex items-center justify-between rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2.5 text-[11px] text-amber-500">
+            <span className="flex items-center gap-1.5 font-bold">
+              <Clock3 size={13} className="animate-pulse" />
+              Passes Reserved
+            </span>
+            <span className="font-mono font-bold">
+              {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+        ) : (
+          <div className="mb-4 flex flex-col gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-center text-[11px] text-destructive">
+            <span className="font-bold flex items-center justify-center gap-1.5">
+              <AlertTriangle size={13} />
+              Reservation Expired
+            </span>
+            <button type="button" onClick={handleResetReservation} className="text-[10px] font-extrabold underline text-primary">
+              Renew Reservation
+            </button>
+          </div>
+        )}
+
+        <div className="mb-5 flex items-center justify-between"><div><div className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">Your order</div><h2 className="mt-1 text-base font-extrabold">{activeEventName.split(' ')[0]} summit</h2></div><ShoppingBag size={18} className="text-muted-foreground" /></div>
+        <div className="mb-5 flex items-center gap-2 rounded-xl bg-muted/60 p-3 text-[10px] text-muted-foreground"><CalendarDays size={14} className="text-foreground" /><span>{activeEventDateText}<br /><strong className="text-foreground">{activeEventVenue}</strong></span></div>
         {selected.length > 0 ? <div className="space-y-3">{selected.map((tier) => <div key={tier.id} className="flex items-start justify-between gap-3 text-xs"><span><span className="font-bold">{quantities[tier.id]} × {tier.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">${tier.price} each</span></span><span className="font-mono font-bold">${tier.price * quantities[tier.id]}</span></div>)}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Choose at least one ticket to continue.</p>}
-        <div className="my-5 border-t border-border pt-4 text-xs"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>${subtotal}</span></div><div className="mt-2 flex justify-between text-muted-foreground"><span>Service fee</span><span>${serviceFee}</span></div><div className="mt-4 flex items-end justify-between"><span className="font-extrabold">Total</span><span className="text-2xl font-extrabold tracking-[-.06em]">${total}</span></div></div>
-          {step === 'tickets' ? <button data-testid="button-continue-to-details" disabled={ticketCount === 0} onClick={() => setStep('details')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40">Continue to details <ArrowRight size={15} /></button> : step === 'details' ? <button data-testid="button-checkout-access" disabled={!buyer.name.trim() || !buyer.email.trim()} onClick={() => user ? void completeOrder() : setStep('access')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"><CreditCard size={15} /> {user ? 'Complete checkout' : 'Continue to checkout'}</button> : <div className="rounded-xl bg-muted p-3 text-center text-[10px] text-muted-foreground">Choose an account or guest checkout option above.</div>}
+        
+        {/* Promo code entry */}
+        <div className="border-t border-border/70 pt-4 mt-4 mb-4">
+          {activePromoCode ? (
+            <div className="flex items-center justify-between text-xs rounded-xl bg-primary/10 border border-primary/20 px-3 py-2">
+              <span className="font-bold text-primary flex items-center gap-1">
+                <Sparkles size={12} />
+                Code Applied: {activePromoCode}
+              </span>
+              <span className="font-mono font-bold">-{discountPercent}%</span>
+            </div>
+          ) : (
+            <form onSubmit={handleApplyPromo} className="flex gap-2">
+              <input
+                value={promoCodeInput}
+                onChange={(e) => setPromoCodeInput(e.target.value)}
+                placeholder="Promo Code (e.g. SUMMER20)"
+                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-[10px] outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                disabled={validatingPromo}
+                className="rounded-lg bg-secondary px-3.5 text-[10px] font-extrabold text-secondary-foreground hover:bg-secondary/85"
+              >
+                Apply
+              </button>
+            </form>
+          )}
+          {promoError && <p className="mt-1.5 text-[9px] font-bold text-destructive">{promoError}</p>}
+        </div>
+
+        <div className="my-5 border-t border-border pt-4 text-xs"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>${rawSubtotal}</span></div>{discountPercent > 0 && <div className="mt-2 flex justify-between text-primary font-bold"><span>Promo Discount</span><span>-${discountAmt}</span></div>}<div className="mt-2 flex justify-between text-muted-foreground"><span>Service fee</span><span>${serviceFee}</span></div><div className="mt-4 flex items-end justify-between"><span className="font-extrabold">Total</span><span className="text-2xl font-extrabold tracking-[-.06em]">${total}</span></div></div>
+          {step === 'tickets' ? (
+            <button data-testid="button-continue-to-details" disabled={ticketCount === 0 || timeLeft === 0} onClick={() => setStep('details')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40">
+              Continue to details <ArrowRight size={15} />
+            </button>
+          ) : step === 'details' ? (
+            <button data-testid="button-checkout-access" disabled={!buyer.name.trim() || !buyer.email.trim() || timeLeft === 0} onClick={() => user ? void completeOrder() : setStep('access')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40">
+              <CreditCard size={15} /> {user ? 'Complete checkout' : 'Continue to checkout'}
+            </button>
+          ) : step === 'access' && user ? (
+            <button onClick={() => void completeOrder()} disabled={issuing || timeLeft === 0} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 animate-pulse">
+              <CreditCard size={15} /> {issuing ? 'Issuing passes...' : 'Complete Checkout & Buy'}
+            </button>
+          ) : (
+            <div className="rounded-xl bg-muted p-3 text-center text-[10px] text-muted-foreground font-bold">
+              Please connect your account above to complete purchase.
+            </div>
+          )}
          {orderError && <p className="mt-3 rounded-xl bg-destructive/10 p-3 text-center text-[10px] font-bold text-destructive">{orderError}</p>}
          <p className="mt-3 text-center text-[10px] leading-relaxed text-muted-foreground">Tickets are created securely and emailed after checkout.</p>
       </aside>
@@ -705,32 +1212,108 @@ function EventPoster({ event }: { event: DiscoverableEvent }) {
       <div className="absolute bottom-[-44px] left-[-22px] h-36 w-36 rotate-12 rounded-[38px] border-[18px] border-white/15" />
       <div className="relative flex h-full min-h-[220px] flex-col justify-between">
         <div className="flex items-center justify-between gap-3"><span className="rounded-full bg-black/10 px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[.14em]">{event.status}</span><span className="font-mono text-[10px] font-bold uppercase">{event.category}</span></div>
-        <div><div className="max-w-[250px] text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[.92] tracking-[-.08em]">{event.name}</div><div className="mt-5 flex items-center gap-2 text-xs font-bold"><CalendarDays size={14} /> {event.date}</div><div className="mt-1 flex items-center gap-2 text-xs font-bold"><MapPin size={14} /> {event.venue} · {event.city}</div></div>
+        <div><div className="max-w-[250px] text-[clamp(2rem,4vw,3rem)] font-extrabold leading-[.92] tracking-[-.08em]">{event.name}</div><div className="mt-5 flex items-center gap-2 text-xs font-bold"><CalendarDays size={14} /> {event.date}</div><div className="mt-1 flex items-center gap-2 text-xs font-bold"><MapPin size={14} /> {event.venue}</div></div>
       </div>
     </div>
-    <div className="p-5"><p className="min-h-[42px] text-xs leading-relaxed text-muted-foreground">{event.description}</p><div className="mt-5 flex items-center justify-between gap-3"><div><span className="font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground">From</span><div className="text-lg font-extrabold">${event.price}</div></div>{event.status === 'Live' ? <Link href="/buy" data-testid={`link-event-buy-${event.id}`} className="inline-flex items-center gap-2 rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-extrabold text-secondary-foreground transition hover:brightness-110">View tickets <ArrowRight size={14} /></Link> : <button type="button" data-testid={`button-event-notify-${event.id}`} className="rounded-xl border border-border px-3.5 py-2.5 text-xs font-bold text-muted-foreground hover:bg-muted">Coming soon</button>}</div></div>
+    <div className="p-5"><p className="min-h-[42px] text-xs leading-relaxed text-muted-foreground">{event.description}</p><div className="mt-5 flex items-center justify-between gap-3"><div><span className="font-mono text-[9px] uppercase tracking-[.15em] text-muted-foreground">From</span><div className="text-lg font-extrabold">${event.price}</div></div>{event.status === 'Live' ? <Link href={`/buy?event=${event.id}`} data-testid={`link-event-buy-${event.id}`} className="inline-flex items-center gap-2 rounded-xl bg-secondary px-3.5 py-2.5 text-xs font-extrabold text-secondary-foreground transition hover:brightness-110">View tickets <ArrowRight size={14} /></Link> : <button type="button" data-testid={`button-event-notify-${event.id}`} className="rounded-xl border border-border px-3.5 py-2.5 text-xs font-bold text-muted-foreground hover:bg-muted">Coming soon</button>}</div></div>
   </article>;
 }
 
 function EventDiscoveryPage() {
+  const [eventsList, setEventsList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${basePath}/api/events/all`)
+      .then(res => res.json())
+      .then(data => {
+        setEventsList(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch public events:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  const colors = ['lime', 'coral', 'blue'];
+  const mappedEvents = eventsList.map((event, index) => ({
+    id: event.id,
+    name: event.name,
+    date: event.dateText,
+    venue: event.venueName || event.address || 'Pier 48',
+    city: event.venueCity || event.address?.split(',')[1]?.trim() || 'San Francisco',
+    category: event.category,
+    description: event.description,
+    price: event.price,
+    accent: colors[index % colors.length] as 'lime' | 'coral' | 'blue',
+    status: event.status === 'PUBLISHED' ? 'Live' : 'Coming soon',
+  }));
+
+  if (loading) {
+    return <div className="text-center py-20 text-xs font-bold text-muted-foreground animate-pulse">Loading curated event calendars...</div>;
+  }
+
   return <div className="drift-in mx-auto max-w-[1180px]">
     <PageHeading eyebrow="Your event calendar" title="Find your next room." detail="Browse upcoming experiences, then keep every pass together in your cart." action={<Link href="/cart" className="inline-flex items-center gap-2 self-start rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs font-bold hover:bg-muted sm:self-auto"><ShoppingBag size={14} /> View cart</Link>} />
     <section className="mb-6 overflow-hidden rounded-[26px] bg-secondary p-6 text-secondary-foreground sm:p-8"><div className="max-w-2xl"><div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55"><span className="h-2 w-2 rounded-full bg-primary soft-pulse" /> Curated for curious people</div><h2 className="text-[clamp(2rem,5vw,4rem)] font-extrabold leading-none tracking-[-.08em]">Good events have a point of view.</h2><p className="mt-4 max-w-lg text-sm leading-relaxed text-secondary-foreground/65">Save your seat with a few taps. Your ticket arrives by email with a unique QR code ready for the door.</p></div></section>
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{discoverableEvents.map((event) => <EventPoster key={event.id} event={event} />)}</div>
+    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{mappedEvents.map((event) => <EventPoster key={event.id} event={event} />)}</div>
   </div>;
 }
 
 function CartPage() {
   const { user } = useUser();
-  const [quantities, setQuantities] = useState<Record<string, number>>(() => readCart());
+  const storedEventId = Number(window.localStorage.getItem('event-check-in:active-event-id'));
+  const activeEventId = (!isNaN(storedEventId) && storedEventId > 0) ? storedEventId : 1;
+  const [ticketTiers, setTicketTiers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (user?.id) setQuantities(readCart(user.id));
+    fetch(`${basePath}/api/events/${activeEventId}/ticket-types`)
+      .then(res => res.json())
+      .then(typesData => {
+        const colors = ['lime', 'coral', 'blue'];
+        const mappedTiers = typesData.map((tier: any, index: number) => ({
+          id: String(tier.id),
+          name: tier.name,
+          description: tier.description,
+          price: tier.price,
+          remaining: tier.remaining,
+          accent: colors[index % colors.length],
+        }));
+        setTicketTiers(mappedTiers);
+        
+        const storedCart = readCart();
+        const initialQuantities: Record<string, number> = {};
+        mappedTiers.forEach((tier: any) => {
+          initialQuantities[tier.id] = storedCart[tier.id] || 0;
+        });
+        setQuantities(initialQuantities);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load cart ticket tiers:', err);
+        setLoading(false);
+      });
+  }, [activeEventId]);
+
+  useEffect(() => {
+    if (user?.id) {
+      const guestCart = readCart('guest');
+      const userCart = readCart(user.id);
+      const merged = { ...userCart };
+      Object.entries(guestCart).forEach(([k, v]) => {
+        merged[k] = Math.max(0, Math.min(8, (merged[k] || 0) + v));
+      });
+      setQuantities(merged);
+    }
   }, [user?.id]);
 
   useEffect(() => {
     if (user?.id) window.localStorage.setItem(cartStorageKey(user.id), JSON.stringify(quantities));
+    else window.localStorage.setItem(cartStorageKey('guest'), JSON.stringify(quantities));
   }, [quantities, user?.id]);
 
   const updateQuantity = (id: string, delta: number) => setQuantities((current) => ({ ...current, [id]: Math.max(0, Math.min(8, (current[id] ?? 0) + delta)) }));
@@ -739,9 +1322,13 @@ function CartPage() {
   const subtotal = selected.reduce((sum, tier) => sum + tier.price * quantities[tier.id], 0);
   const serviceFee = Math.round(subtotal * 0.035);
 
+  if (loading) {
+    return <div className="text-center py-20 text-xs font-bold text-muted-foreground animate-pulse">Syncing with your cashless wallet...</div>;
+  }
+
   return <div className="drift-in mx-auto max-w-[980px]">
     <PageHeading eyebrow="Saved for checkout" title="Your cart." detail="Review your passes before continuing to attendee details." action={<Link href="/events" className="inline-flex items-center gap-2 self-start text-xs font-bold text-muted-foreground hover:text-foreground sm:self-auto"><ArrowLeft size={14} /> Keep browsing</Link>} />
-    {count === 0 ? <section className="rounded-[26px] border border-dashed border-border bg-card p-10 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20"><ShoppingBag size={24} /></div><h2 className="mt-5 text-xl font-extrabold">Your cart is waiting.</h2><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Pick an event and add a ticket to see it here.</p><Link href="/events" className="mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground">Browse events</Link></section> : <div className="grid gap-5 lg:grid-cols-[1fr_320px]"><section className="space-y-3">{selected.map((tier) => <div key={tier.id} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm"><div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tier.accent === 'lime' ? 'bg-primary/25' : tier.accent === 'coral' ? 'bg-accent/20' : 'bg-chart-3/15'}`}><Ticket size={20} /></div><div className="min-w-0 flex-1"><div className="text-sm font-extrabold">{tier.name}</div><p className="mt-1 text-xs text-muted-foreground">${tier.price} each · {tier.description}</p></div><div className="flex items-center gap-2 rounded-xl bg-muted p-1"><button type="button" onClick={() => updateQuantity(tier.id, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-card"><Minus size={14} /></button><span className="w-5 text-center text-xs font-extrabold">{quantities[tier.id]}</span><button type="button" onClick={() => updateQuantity(tier.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-card shadow-sm"><Plus size={14} /></button></div></div>)}</section><aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-sm lg:sticky lg:top-24"><div className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">Northstar summit</div><div className="mt-4 space-y-2 text-xs">{selected.map((tier) => <div key={tier.id} className="flex justify-between"><span>{quantities[tier.id]} × {tier.name}</span><span className="font-mono">${tier.price * quantities[tier.id]}</span></div>)}</div><div className="my-5 border-t border-border pt-4 text-xs"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>${subtotal}</span></div><div className="mt-2 flex justify-between text-muted-foreground"><span>Service fee</span><span>${serviceFee}</span></div><div className="mt-4 flex justify-between text-base font-extrabold"><span>Total</span><span>${subtotal + serviceFee}</span></div></div><button type="button" onClick={() => setLocation('/buy')} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground">Continue to checkout <ArrowRight size={15} /></button></aside></div>}
+    {count === 0 ? <section className="rounded-[26px] border border-dashed border-border bg-card p-10 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20"><ShoppingBag size={24} /></div><h2 className="mt-5 text-xl font-extrabold">Your cart is waiting.</h2><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Pick an event and add a ticket to see it here.</p><Link href="/events" className="mt-6 inline-flex rounded-xl bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground">Browse events</Link></section> : <div className="grid gap-5 lg:grid-cols-[1fr_320px]"><section className="space-y-3">{selected.map((tier) => <div key={tier.id} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm"><div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tier.accent === 'lime' ? 'bg-primary/25' : tier.accent === 'coral' ? 'bg-accent/20' : 'bg-chart-3/15'}`}><Ticket size={20} /></div><div className="min-w-0 flex-1"><div className="text-sm font-extrabold">{tier.name}</div><p className="mt-1 text-xs text-muted-foreground">${tier.price} each · {tier.description}</p></div><div className="flex items-center gap-2 rounded-xl bg-muted p-1"><button type="button" onClick={() => updateQuantity(tier.id, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-card"><Minus size={14} /></button><span className="w-5 text-center text-xs font-extrabold">{quantities[tier.id]}</span><button type="button" onClick={() => updateQuantity(tier.id, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-card shadow-sm"><Plus size={14} /></button></div></div>)}</section><aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-sm lg:sticky lg:top-24"><div className="font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">Cashless Checkouts</div><div className="mt-4 space-y-2 text-xs">{selected.map((tier) => <div key={tier.id} className="flex justify-between"><span>{quantities[tier.id]} × {tier.name}</span><span className="font-mono">${tier.price * quantities[tier.id]}</span></div>)}</div><div className="my-5 border-t border-border pt-4 text-xs"><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>${subtotal}</span></div><div className="mt-2 flex justify-between text-muted-foreground"><span>Service fee</span><span>${serviceFee}</span></div><div className="mt-4 flex justify-between text-base font-extrabold"><span>Total</span><span>${subtotal + serviceFee}</span></div></div><button type="button" onClick={() => setLocation(`/buy?event=${activeEventId}`)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground">Continue to checkout <ArrowRight size={15} /></button></aside></div>}
   </div>;
 }
 
@@ -791,16 +1378,707 @@ function OrganizerOnboarding({ userId, onComplete }: { userId: string; onComplet
   return <OnboardingFrame eyebrow="Organizer setup" title="Build your event workspace." detail="Every field is required so your team and attendees have a complete source of truth."><form onSubmit={submit} className="space-y-6"><div><div className="mb-3 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">Business information</div><div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-xs font-bold">Business or organization name</span><input required value={form.businessName} onChange={(e) => update('businessName', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">Business type</span><select required value={form.businessType} onChange={(e) => update('businessType', e.target.value)} className="onboarding-input"><option value="">Choose one</option><option>Company</option><option>Community</option><option>Venue</option><option>Agency</option><option>Non-profit</option></select></label><label><span className="mb-2 block text-xs font-bold">Business email</span><input required type="email" value={form.businessEmail} onChange={(e) => update('businessEmail', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">Business phone</span><input required type="tel" value={form.businessPhone} onChange={(e) => update('businessPhone', e.target.value)} className="onboarding-input" /></label></div></div><div><div className="mb-3 font-mono text-[10px] uppercase tracking-[.16em] text-muted-foreground">First event</div><div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-xs font-bold">Event name</span><input required value={form.eventName} onChange={(e) => update('eventName', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">Event date</span><input required type="date" value={form.eventDate} onChange={(e) => update('eventDate', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">Venue</span><input required value={form.eventVenue} onChange={(e) => update('eventVenue', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">City</span><input required value={form.eventCity} onChange={(e) => update('eventCity', e.target.value)} className="onboarding-input" /></label><label><span className="mb-2 block text-xs font-bold">Expected capacity</span><input required min="1" type="number" value={form.capacity} onChange={(e) => update('capacity', e.target.value)} className="onboarding-input" /></label><label className="sm:col-span-2"><span className="mb-2 block text-xs font-bold">Event description</span><textarea required minLength={20} value={form.description} onChange={(e) => update('description', e.target.value)} rows={3} className="onboarding-input resize-none" placeholder="What should attendees know about this event?" /></label></div></div><button disabled={saving} className="w-full rounded-xl bg-primary py-3.5 text-xs font-extrabold text-primary-foreground disabled:opacity-50">{saving ? 'Creating workspace…' : 'Create organizer workspace'}</button></form></OnboardingFrame>;
 }
 
+function AttendeeTicketsWallet() {
+  const [ticketsList, setTicketsList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+  const [cashlessDetails, setCashlessDetails] = useState<any | null>(null);
+  const [loadingCashless, setLoadingCashless] = useState(false);
+  const [topupAmount, setTopupAmount] = useState<number>(20); // default $20.00
+  const [submittingTopup, setSubmittingTopup] = useState(false);
+  const [transferringTicket, setTransferringTicket] = useState<any | null>(null);
+  const [transferName, setTransferName] = useState('');
+  const [transferEmail, setTransferEmail] = useState('');
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [transferSuccess, setTransferSuccess] = useState('');
+  const [transferError, setTransferError] = useState('');
+
+  const fetchTickets = () => {
+    const token = (window as any).__firebaseToken;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(`${basePath}/api/tickets/my`, { headers })
+      .then(res => res.json())
+      .then(data => {
+        setTicketsList(data);
+        setLoading(false);
+        if (data.length > 0 && !selectedTicket) {
+          setSelectedTicket(data[0]);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchTickets();
+  }, []);
+
+  const loadCashlessHistory = (ticketId: number) => {
+    setLoadingCashless(true);
+    fetch(`${basePath}/api/tickets/${ticketId}/cashless`)
+      .then(res => res.json())
+      .then(data => {
+        setCashlessDetails(data);
+        setLoadingCashless(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoadingCashless(false);
+      });
+  };
+
+  useEffect(() => {
+    if (selectedTicket) {
+      loadCashlessHistory(selectedTicket.id);
+    } else {
+      setCashlessDetails(null);
+    }
+  }, [selectedTicket]);
+
+  const handleTopup = async () => {
+    if (!selectedTicket) return;
+    setSubmittingTopup(true);
+    try {
+      const response = await fetch(`${basePath}/api/cashless/topup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticketId: selectedTicket.id,
+          amountCents: topupAmount * 100,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        loadCashlessHistory(selectedTicket.id);
+        fetchTickets();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSubmittingTopup(false);
+    }
+  };
+
+  const [simulateCheckingIn, setSimulateCheckingIn] = useState(false);
+  const [submittingSpend, setSubmittingSpend] = useState(false);
+  const [spendingSuccess, setSpendingSuccess] = useState('');
+  const [spendingError, setSpendingError] = useState('');
+
+  const handleSimulateCheckIn = async () => {
+    if (!selectedTicket) return;
+    setSimulateCheckingIn(true);
+    try {
+      const response = await fetch(`${basePath}/api/check-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: selectedTicket.token,
+          staffName: 'Self-Service Entrance kiosk',
+          scannerName: 'Simulated Gate iPad · 01',
+          entrance: 'North Gate / B',
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        fetchTickets();
+        setSelectedTicket({ ...selectedTicket, status: 'CHECKED_IN' });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSimulateCheckingIn(false);
+    }
+  };
+
+  const handleSimulateSpend = async (vendorName: string, priceCents: number) => {
+    if (!selectedTicket) return;
+    setSubmittingSpend(true);
+    setSpendingSuccess('');
+    setSpendingError('');
+    try {
+      const response = await fetch(`${basePath}/api/cashless/spend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticketId: selectedTicket.id,
+          description: vendorName,
+          amountCents: priceCents,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSpendingSuccess(`Successfully spent $${(priceCents / 100).toFixed(2)} on ${vendorName}!`);
+        loadCashlessHistory(selectedTicket.id);
+        fetchTickets();
+        setTimeout(() => setSpendingSuccess(''), 3000);
+      } else {
+        setSpendingError(data.error || 'Failed to complete RFID purchase.');
+        setTimeout(() => setSpendingError(''), 4000);
+      }
+    } catch (e) {
+      setSpendingError('Connection error.');
+      setTimeout(() => setSpendingError(''), 4000);
+    } finally {
+      setSubmittingSpend(false);
+    }
+  };
+
+  const handleTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferringTicket) return;
+    setSubmittingTransfer(true);
+    setTransferSuccess('');
+    setTransferError('');
+
+    const token = (window as any).__firebaseToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    try {
+      const response = await fetch(`${basePath}/api/tickets/transfer`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ticketId: transferringTicket.id,
+          newName: transferName,
+          newEmail: transferEmail,
+        }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setTransferSuccess('Ticket successfully reassigned and transferred!');
+        setTransferName('');
+        setTransferEmail('');
+        setTimeout(() => {
+          setTransferringTicket(null);
+          setTransferSuccess('');
+          fetchTickets();
+          setSelectedTicket(null);
+        }, 1500);
+      } else {
+        setTransferError(data.error || 'Transfer failed.');
+      }
+    } catch (err) {
+      setTransferError('Communication error.');
+    } finally {
+      setSubmittingTransfer(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center text-xs font-bold">
+        <span className="h-2 w-2 rounded-full bg-primary soft-pulse mr-2" />
+        Loading your digital tickets…
+      </div>
+    );
+  }
+
+  return (
+    <div className="drift-in mx-auto max-w-[1180px]">
+      <PageHeading
+        eyebrow="Attendee Pass Desk"
+        title="My Tickets & Cashless Band"
+        detail="Manage your digital passes, assign tickets to friends, and top up your cashless event wristband."
+        action={
+          <Link href="/events" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground hover:brightness-95">
+            <Sparkles size={14} /> Buy more tickets
+          </Link>
+        }
+      />
+
+      {ticketsList.length === 0 ? (
+        <section className="rounded-[26px] border border-dashed border-border bg-card p-12 text-center max-w-xl mx-auto">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20">
+            <Ticket size={24} className="text-primary" />
+          </div>
+          <h2 className="mt-5 text-xl font-extrabold tracking-tight">No tickets in your wallet</h2>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
+            Assign tickets to your email address during purchase, or check your email for invite transfers!
+          </p>
+          <Link href="/events" className="mt-6 inline-flex rounded-xl bg-primary px-5 py-3 text-xs font-extrabold text-primary-foreground hover:brightness-95">
+            Browse Live Events
+          </Link>
+        </section>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+              <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground font-bold">
+                Active Passes ({ticketsList.length})
+              </div>
+              {ticketsList.length > 1 && (
+                <BulkTicketPdfButton tickets={ticketsList} />
+              )}
+            </div>
+            
+            <div className="grid gap-4 sm:grid-cols-2">
+              {ticketsList.map((t) => {
+                const isSelected = selectedTicket?.id === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedTicket(t)}
+                    className={`cursor-pointer overflow-hidden rounded-2xl border transition shadow-sm bg-card hover:border-primary/50 ${isSelected ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}
+                  >
+                    <div className="bg-secondary/40 border-b border-border/60 p-4 flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold text-primary">{t.type}</span>
+                      <span className="font-mono text-[9px] text-muted-foreground">{t.ticketNumber}</span>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-extrabold text-foreground truncate">{t.eventName}</h4>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Today · Pier 48, SF</p>
+                      </div>
+                      
+                      <div className="flex items-center justify-between border-t border-border/50 pt-3">
+                        <div className="text-[10px] text-muted-foreground">
+                          Holder: <span className="font-bold text-foreground truncate block max-w-[100px]">{t.attendeeName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <TicketPdfButton ticket={t} />
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[8px] font-bold ${t.status === 'VALID' ? 'bg-primary/25 text-foreground' : 'bg-accent/20 text-accent-foreground'}`}>
+                            {t.status === 'VALID' ? 'Valid' : t.status === 'CHECKED_IN' ? 'Admitted' : t.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedTicket && (
+              <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="bg-white p-3 rounded-xl border border-border shrink-0 flex flex-col items-center">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${selectedTicket.token}`}
+                      alt="Pass QR code"
+                      className="h-[120px] w-[120px]"
+                    />
+                    <span className="font-mono text-[9px] font-bold mt-2 text-muted-foreground">{selectedTicket.ticketNumber}</span>
+                  </div>
+                  
+                  <div className="flex-1 space-y-4 text-center sm:text-left">
+                    <div>
+                      <h3 className="text-lg font-extrabold">{selectedTicket.eventName}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">Today · 18 June 2024 · Pier 48, San Francisco</p>
+                    </div>
+
+                    <div className="grid gap-2 text-xs py-3 border-y border-border/50 text-muted-foreground text-left">
+                      <div>Assigned Attendee: <strong className="text-foreground">{selectedTicket.attendeeName}</strong></div>
+                      <div>Contact Email: <strong className="text-foreground">{selectedTicket.attendeeEmail}</strong></div>
+                      <div>Cashless Wristband: <strong className="text-foreground">{selectedTicket.cashlessNumber || 'No RFID registered'}</strong></div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                      <button
+                        onClick={() => setTransferringTicket(selectedTicket)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[10px] font-bold hover:bg-muted"
+                      >
+                        <ExternalLink size={12} /> Transfer/Assign Pass
+                      </button>
+                      <TicketPdfButton ticket={selectedTicket} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="font-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground mb-1 font-bold">
+              RFID Cashless Band
+            </div>
+
+            {selectedTicket ? (
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-5">
+                <div className="bg-secondary rounded-2xl p-5 text-secondary-foreground text-center relative overflow-hidden">
+                  <div className="absolute top-[-10px] right-[-10px] h-20 w-20 rounded-full bg-primary/10 border border-primary/25" />
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-secondary-foreground/50">Cashless Balance</div>
+                  <div className="text-4xl font-extrabold mt-2 tracking-[-.05em] text-primary">
+                    ${((cashlessDetails?.cashlessBalance ?? selectedTicket.cashlessBalance) / 100).toFixed(2)}
+                  </div>
+                  <div className="mt-2 text-[10px] font-mono text-secondary-foreground/45 flex items-center justify-center gap-1.5">
+                    <Smartphone size={12} /> BAND: {selectedTicket.cashlessNumber}
+                  </div>
+                </div>
+
+                {/* Simulated Entrance Scan when ticket is valid but not checked in */}
+                {selectedTicket.status === 'VALID' && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex flex-col gap-3 text-left">
+                    <div className="flex items-start gap-2.5 text-amber-500">
+                      <Info size={15} className="mt-0.5 shrink-0" />
+                      <div>
+                        <span className="text-xs font-extrabold block">RFID Wristband Inactive</span>
+                        <span className="text-[10px] text-muted-foreground block mt-0.5 leading-relaxed">
+                          To simulate buying food or drinks inside the venue, you must check in at the gate first!
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleSimulateCheckIn}
+                      disabled={simulateCheckingIn}
+                      className="w-full bg-amber-500 text-secondary font-extrabold text-[11px] py-2.5 px-3 rounded-lg flex items-center justify-center gap-1.5 hover:bg-amber-600 transition"
+                    >
+                      {simulateCheckingIn ? (
+                        <span className="h-3 w-3 rounded-full border-2 border-secondary border-t-transparent animate-spin" />
+                      ) : (
+                        <>⚡ Simulate Entrance Scan (Check-In)</>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Wristband spend simulation panel when checked in */}
+                {selectedTicket.status === 'CHECKED_IN' && (
+                  <div className="border-t border-border/70 pt-4 space-y-3">
+                    <h4 className="text-xs font-bold">Simulate RFID Tap / Spend</h4>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      Tap your simulated RFID band at a festival stand to purchase:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { name: 'Craft Beer @ Main Bar', cents: 850, label: '🍺 Beer ($8.50)' },
+                        { name: 'Chicken Tacos @ Food Stand', cents: 1200, label: '🌮 Tacos ($12.00)' },
+                        { name: 'G&T Cocktail @ Terrace Bar', cents: 1400, label: '🍹 G&T ($14.00)' },
+                        { name: 'Event T-Shirt @ Merch Tent', cents: 2500, label: '👕 Merch ($25.00)' },
+                      ].map((item) => (
+                        <button
+                          key={item.name}
+                          onClick={() => handleSimulateSpend(item.name, item.cents)}
+                          disabled={submittingSpend}
+                          className="rounded-lg border border-border bg-muted/40 py-2.5 px-2.5 text-[10px] font-bold text-left hover:border-primary hover:bg-primary/5 transition flex items-center justify-between"
+                        >
+                          <span>{item.label}</span>
+                          <ArrowRight size={10} className="text-muted-foreground" />
+                        </button>
+                      ))}
+                    </div>
+                    {spendingSuccess && (
+                      <p className="text-[10px] font-bold text-primary text-center bg-primary/10 py-2 rounded-lg">{spendingSuccess}</p>
+                    )}
+                    {spendingError && (
+                      <p className="text-[10px] font-bold text-destructive text-center bg-destructive/10 py-2 rounded-lg">{spendingError}</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold">Online Wristband Top-up</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[10, 20, 50].map((amt) => (
+                      <button
+                        key={amt}
+                        onClick={() => setTopupAmount(amt)}
+                        className={`rounded-xl border py-2.5 text-xs font-bold transition ${topupAmount === amt ? 'border-primary bg-primary/15' : 'border-border bg-muted/40 hover:bg-muted'}`}
+                      >
+                        ${amt}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <button
+                    onClick={handleTopup}
+                    disabled={submittingTopup}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-xs font-extrabold text-primary-foreground hover:brightness-95 disabled:opacity-50"
+                  >
+                    {submittingTopup ? (
+                      <span className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                    ) : (
+                      <>
+                        <CreditCard size={14} /> Pay & Top-up ${topupAmount}.00
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="border-t border-border/70 pt-4 space-y-3">
+                  <h4 className="text-xs font-bold">Cashless Spend History</h4>
+                  
+                  {loadingCashless ? (
+                    <div className="text-center py-4 text-[10px] text-muted-foreground animate-pulse animate-pulse">Syncing transactions…</div>
+                  ) : cashlessDetails?.transactions?.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground text-center py-3">No wristband spend recorded yet. Tap your band at food stands or bars inside the event!</p>
+                  ) : (
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                      {cashlessDetails?.transactions?.map((t: any) => {
+                        const isCredit = t.amount > 0;
+                        return (
+                          <div key={t.id} className="flex items-center justify-between text-[10px] border-b border-border/40 pb-2 last:border-b-0">
+                            <div className="text-left">
+                              <div className="font-extrabold truncate max-w-[150px]">{t.description}</div>
+                              <div className="text-[8px] text-muted-foreground mt-0.5">
+                                {new Date(t.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                            <span className={`font-mono font-bold ${isCredit ? 'text-primary' : 'text-accent-foreground'}`}>
+                              {isCredit ? '+' : '-'}${Math.abs(t.amount / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-card p-6 text-center text-xs text-muted-foreground leading-relaxed">
+                Select a pass from the list to manage and top-up its cashless event account.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {transferringTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 relative">
+            <button
+              onClick={() => setTransferringTicket(null)}
+              className="absolute top-4 right-4 rounded-lg p-1 text-muted-foreground hover:bg-muted"
+            >
+              <X size={18} />
+            </button>
+            
+            <div>
+              <h3 className="text-lg font-extrabold">Reassign & Transfer Pass</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                This will transfer ownership of ticket <strong className="font-mono text-[10px]">{transferringTicket.ticketNumber}</strong> to a different email.
+              </p>
+            </div>
+
+            <form onSubmit={handleTransfer} className="space-y-4 pt-2 text-left">
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold">Friend's Full Name</span>
+                <input
+                  required
+                  value={transferName}
+                  onChange={(e) => setTransferName(e.target.value)}
+                  placeholder="e.g. Liam Chen"
+                  className="onboarding-input"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold">Friend's Email Address</span>
+                <input
+                  required
+                  type="email"
+                  value={transferEmail}
+                  onChange={(e) => setTransferEmail(e.target.value)}
+                  placeholder="liam@example.com"
+                  className="onboarding-input"
+                />
+              </label>
+
+              {transferSuccess && (
+                <div className="rounded-xl bg-primary/25 p-3 text-center text-xs font-bold text-foreground">
+                  {transferSuccess}
+                </div>
+              )}
+
+              {transferError && (
+                <div className="rounded-xl bg-destructive/15 p-3 text-center text-xs font-bold text-destructive">
+                  {transferError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTransferringTicket(null)}
+                  className="flex-1 rounded-xl border border-border py-3 text-xs font-bold hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingTransfer}
+                  className="flex-1 rounded-xl bg-primary py-3 text-xs font-extrabold text-primary-foreground hover:brightness-95 disabled:opacity-50"
+                >
+                  {submittingTransfer ? (
+                    <span className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin mx-auto" />
+                  ) : (
+                    'Confirm Transfer'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OnboardingFrame({ eyebrow, title, detail, children }: { eyebrow: string; title: string; detail: string; children: ReactNode }) {
   const { signOut } = useClerk();
   return <div className="min-h-[100dvh] bg-secondary px-4 py-8 text-secondary-foreground"><div className="mx-auto max-w-[760px]"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Ticket size={20} /></span><span className="text-sm font-extrabold">Event Check-In</span></div><button type="button" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="flex items-center gap-2 rounded-xl border border-secondary-foreground/15 px-3 py-2 text-xs font-bold text-secondary-foreground/75 hover:bg-secondary-foreground/10"><LogOut size={14} /> Sign out</button></div><div className="mt-12 rounded-[28px] bg-background p-6 text-foreground shadow-2xl sm:p-10"><div className="mb-8"><div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.2em] text-muted-foreground"><span className="h-2 w-2 rounded-full bg-primary" /> {eyebrow}</div><h1 className="text-[clamp(2rem,5vw,3.5rem)] font-extrabold leading-none tracking-[-.08em]">{title}</h1><p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">{detail}</p></div>{children}</div></div></div>;
 }
 
 function LandingPage() {
+  const [, setLocation] = useLocation();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [eventsList, setEventsList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${basePath}/api/events/all`)
+      .then(res => res.json())
+      .then(data => {
+        setEventsList(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch public events:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  const colors = ['lime', 'coral', 'blue'];
+  const mappedEvents = eventsList.map((event, index) => ({
+    id: event.id,
+    name: event.name,
+    date: event.dateText,
+    venue: event.venueName || event.address || 'Pier 48',
+    city: event.venueCity || event.address?.split(',')[1]?.trim() || 'San Francisco',
+    category: event.category,
+    description: event.description,
+    price: event.price,
+    accent: colors[index % colors.length] as 'lime' | 'coral' | 'blue',
+    status: event.status === 'PUBLISHED' ? 'Live' : 'Coming soon',
+  }));
+
+  const filteredEvents = mappedEvents.filter(event =>
+    event.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    event.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    event.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    event.venue.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return <div className="min-h-[100dvh] bg-secondary text-secondary-foreground"><div className="mx-auto flex min-h-[100dvh] max-w-[1280px] flex-col px-5 py-6 sm:px-8 lg:px-12">
-    <header className="flex items-center justify-between"><Link href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Ticket size={20} strokeWidth={2.5} /></span><span><span className="block text-sm font-extrabold tracking-[-.03em]">Event Check-In</span><span className="block font-mono text-[9px] uppercase tracking-[.18em] text-secondary-foreground/50">Tickets made simple</span></span></Link><div className="flex items-center gap-2"><Link href="/sign-in" data-testid="link-landing-sign-in" className="rounded-xl px-3.5 py-2.5 text-xs font-bold text-secondary-foreground/75 hover:bg-secondary-foreground/10">Sign in</Link><Link href="/sign-up" data-testid="link-landing-sign-up" className="rounded-xl bg-primary px-3.5 py-2.5 text-xs font-extrabold text-primary-foreground hover:brightness-95">Create account</Link></div></header>
-    <main className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.05fr_.95fr] lg:py-20"><div><div className="mb-5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55"><span className="h-2 w-2 rounded-full bg-primary soft-pulse" /> One place for every entrance</div><h1 className="max-w-2xl text-[clamp(3rem,7vw,6.3rem)] font-extrabold leading-[.94] tracking-[-.09em]">The smoother way to arrive.</h1><p className="mt-6 max-w-xl text-base leading-relaxed text-secondary-foreground/65 sm:text-lg">Buy a ticket in minutes, keep it on your phone, and walk into events with confidence. Organizers get the same calm control on event day.</p><div className="mt-9 flex flex-col gap-3 sm:flex-row"><Link href="/sign-up" data-testid="link-landing-get-started" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 text-sm font-extrabold text-primary-foreground hover:brightness-95">Get started <ArrowRight size={16} /></Link><Link href="/sign-in" className="inline-flex items-center justify-center gap-2 rounded-xl border border-secondary-foreground/15 px-5 py-3.5 text-sm font-bold text-secondary-foreground/80 hover:bg-secondary-foreground/10">I already have an account</Link></div><div className="mt-12 flex flex-wrap gap-x-6 gap-y-3 text-[10px] text-secondary-foreground/50"><span className="flex items-center gap-2"><ShieldCheck size={13} className="text-primary" /> Secure accounts</span><span className="flex items-center gap-2"><Smartphone size={13} className="text-primary" /> Mobile-ready tickets</span><span className="flex items-center gap-2"><Radio size={13} className="text-primary" /> Fast entry</span></div></div>
-      <div className="relative mx-auto w-full max-w-[520px]"><div className="absolute -right-5 -top-8 h-40 w-40 rounded-full border-[24px] border-primary/10" /><div className="relative overflow-hidden rounded-[30px] border border-secondary-foreground/10 bg-background p-4 text-foreground shadow-2xl sm:p-6"><div className="flex items-center justify-between border-b border-border pb-4"><div><div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Your next event</div><div className="mt-1 text-sm font-extrabold">Northstar Product Summit</div></div><span className="rounded-full bg-primary/25 px-2.5 py-1 font-mono text-[9px] font-bold uppercase">Live</span></div><div className="mt-5 rounded-2xl bg-secondary p-5 text-secondary-foreground"><div className="flex items-start justify-between"><div><div className="font-mono text-[9px] uppercase tracking-[.18em] text-secondary-foreground/50">18 June 2024</div><div className="mt-3 text-2xl font-extrabold tracking-[-.06em]">You’re invited.</div><div className="mt-2 flex items-center gap-1.5 text-[10px] text-secondary-foreground/55"><MapPin size={12} /> Pier 48 · San Francisco</div></div><div className="qr-mark h-20 w-20 rounded-lg border-4 border-white bg-white" /></div><div className="mt-6 flex items-center justify-between border-t border-secondary-foreground/10 pt-4 text-[10px]"><span className="text-secondary-foreground/50">Digital pass</span><span className="font-mono font-bold">NS-04821</span></div></div><div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-3 py-3 text-[10px]"><span className="flex items-center gap-2 font-bold"><CheckCircle2 size={14} className="text-primary" /> Ready for the door</span><ArrowRight size={14} className="text-muted-foreground" /></div></div></div>
+    <header className="flex items-center justify-between"><Link href="/" className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Ticket size={20} strokeWidth={2.5} /></span><span><span className="block text-sm font-extrabold tracking-[-.03em]">Event Check-In</span><span className="block font-mono text-[9px] uppercase tracking-[.18em] text-secondary-foreground/50">Howler-Style Eco-system</span></span></Link><div className="flex items-center gap-2"><button type="button" data-testid="link-landing-sign-in" onClick={() => { console.log("Sign In clicked"); setLocation('/sign-in'); }} className="rounded-xl px-3.5 py-2.5 text-xs font-bold text-secondary-foreground/75 hover:bg-secondary-foreground/10 transition-colors cursor-pointer">Sign In</button><button type="button" data-testid="link-landing-sign-up" onClick={() => { console.log("Sign Up clicked"); setLocation('/sign-up'); }} className="rounded-xl bg-primary px-3.5 py-2.5 text-xs font-extrabold text-primary-foreground hover:brightness-95 transition-all shadow-xs cursor-pointer">Sign Up</button></div></header>
+
+    {/* Search & Event listings on the Homepage directly at the VERY TOP */}
+    <section id="discover" className="py-12 scroll-mt-6 border-b border-secondary-foreground/10">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55 block mb-2">Live Catalog</span>
+          <h2 className="text-[clamp(2.3rem,5vw,3.3rem)] font-extrabold leading-none tracking-[-.07em]">Curated events waiting for you.</h2>
+          <p className="text-xs text-secondary-foreground/60 mt-3 max-w-lg leading-relaxed">
+            Select passes and assign attendee details fully as a guest. Connecting your account is only required at checkout confirmation.
+          </p>
+        </div>
+
+        {/* Live Search Bar */}
+        <div className="relative w-full max-w-sm shrink-0">
+          <input 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name, city, genre, venue..." 
+            className="w-full rounded-xl border border-secondary-foreground/15 bg-background/25 px-4 py-3 pl-10 text-xs outline-none focus:border-primary placeholder:text-secondary-foreground/45 text-foreground transition-all"
+          />
+          <Search size={15} className="absolute left-3.5 top-3.5 text-secondary-foreground/40" />
+        </div>
+      </div>
+
+      {/* Grid containing results */}
+      {loading ? (
+        <div className="text-center py-16 text-xs font-bold text-muted-foreground animate-pulse">Querying live event registries...</div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {filteredEvents.map((event) => (
+            <EventPoster key={event.id} event={event} />
+          ))}
+          {filteredEvents.length === 0 && (
+            <div className="col-span-full py-16 text-center rounded-2xl border border-dashed border-secondary-foreground/10 bg-secondary-foreground/5">
+              <span className="text-xs text-secondary-foreground/45 block">No events match your current filter query.</span>
+              <button onClick={() => setSearchQuery('')} className="mt-3 text-xs font-bold text-primary underline">Clear Search Query</button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+
+    {/* Immersive Branding Hero Section now placed below the Discover section */}
+    <main className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.05fr_.95fr] lg:py-20">
+      <div>
+        <div className="mb-5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[.2em] text-secondary-foreground/55">
+          <span className="h-2 w-2 rounded-full bg-primary soft-pulse" /> Cashless · Ticketing · Event Management
+        </div>
+        <h1 className="max-w-2xl text-[clamp(3rem,7vw,6.3rem)] font-extrabold leading-[.94] tracking-[-.09em]">The smoother way to arrive.</h1>
+        <p className="mt-6 max-w-xl text-base leading-relaxed text-secondary-foreground/65 sm:text-lg">Buy a ticket in minutes, reassign passes to friends instantly, and enjoy 100% cashless RFID wristbands. Organizers simulate entrances and audit counts live.</p>
+        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            data-testid="link-landing-get-started"
+            onClick={() => {
+              console.log("Sign Up clicked");
+              setLocation('/sign-up');
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 text-sm font-extrabold text-primary-foreground hover:brightness-95 transition-all cursor-pointer"
+          >
+            Sign Up & Get Started <ArrowRight size={16} />
+          </button>
+          <button
+            type="button"
+            data-testid="link-landing-have-account"
+            onClick={() => {
+              console.log("Sign In clicked");
+              setLocation('/sign-in');
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-secondary-foreground/15 px-5 py-3.5 text-sm font-bold text-secondary-foreground/80 hover:bg-secondary-foreground/10 transition-colors cursor-pointer"
+          >
+            Sign In with Existing Account
+          </button>
+        </div>
+        <div className="mt-12 flex flex-wrap gap-x-6 gap-y-3 text-[10px] text-secondary-foreground/50">
+          <span className="flex items-center gap-2"><ShieldCheck size={13} className="text-primary" /> Secure Accounts</span>
+          <span className="flex items-center gap-2"><Smartphone size={13} className="text-primary" /> RFID Cashless Wristbands</span>
+          <span className="flex items-center gap-2"><Radio size={13} className="text-primary" /> Instant Gate Check-In</span>
+        </div>
+      </div>
+      <div className="relative mx-auto w-full max-w-[520px]">
+        <div className="absolute -right-5 -top-8 h-40 w-40 rounded-full border-[24px] border-primary/10" />
+        <div className="relative overflow-hidden rounded-[30px] border border-secondary-foreground/10 bg-background p-4 text-foreground shadow-2xl sm:p-6">
+          <div className="relative h-44 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-5 overflow-hidden rounded-t-[28px] bg-secondary">
+            <img src={festivalNeonBanner} alt="Northstar event banner" className="w-full h-full object-cover object-center" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-black/20 to-transparent" />
+            <span className="absolute top-4 right-4 rounded-full bg-primary/90 text-primary-foreground px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider backdrop-blur-xs">Live Event</span>
+          </div>
+          <div className="flex items-center justify-between border-b border-border pb-4">
+            <div>
+              <div className="font-mono text-[9px] uppercase tracking-[.18em] text-muted-foreground">Next Festival Room</div>
+              <div className="mt-1 text-sm font-extrabold">Northstar Product Summit</div>
+            </div>
+            <span className="font-mono text-[10px] text-muted-foreground font-bold">18 Jun 2024</span>
+          </div>
+          <div className="mt-5 rounded-2xl bg-secondary p-5 text-secondary-foreground">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="font-mono text-[9px] uppercase tracking-[.18em] text-secondary-foreground/50">Pier 48, San Francisco</div>
+                <div className="mt-3 text-2xl font-extrabold tracking-[-.06em]">You’re invited.</div>
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-secondary-foreground/55"><MapPin size={12} /> Live RFID Sync Enabled</div>
+              </div>
+              <div className="qr-mark h-20 w-20 rounded-lg border-4 border-white bg-white" />
+            </div>
+            <div className="mt-6 flex items-center justify-between border-t border-secondary-foreground/10 pt-4 text-[10px]">
+              <span className="text-secondary-foreground/50">Digital pass</span>
+              <span className="font-mono font-bold">NS-04821</span>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-3 py-3 text-[10px]">
+            <span className="flex items-center gap-2 font-bold"><CheckCircle2 size={14} className="text-primary" /> Active RFID cashless account linked</span>
+            <ArrowRight size={14} className="text-muted-foreground" />
+          </div>
+        </div>
+      </div>
     </main>
   </div></div>;
 }
@@ -811,11 +2089,45 @@ function RoleChooser({ userId, userName, onChoose }: { userId: string; userName:
 }
 
 function SignInPage() {
-  return <div className="flex min-h-[100dvh] items-center justify-center bg-secondary/20 px-4 py-10"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
+  const { isSignedIn } = useUser();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isSignedIn) {
+      setLocation('/events');
+    }
+  }, [isSignedIn, setLocation]);
+
+  if (isSignedIn) {
+    return <Redirect to="/events" />;
+  }
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-secondary/20 px-4 py-10">
+      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} onAuthSuccess={() => setLocation('/events')} />
+    </div>
+  );
 }
 
 function SignUpPage() {
-  return <div className="flex min-h-[100dvh] items-center justify-center bg-secondary/20 px-4 py-10"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+  const { isSignedIn } = useUser();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isSignedIn) {
+      setLocation('/events');
+    }
+  }, [isSignedIn, setLocation]);
+
+  if (isSignedIn) {
+    return <Redirect to="/events" />;
+  }
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-secondary/20 px-4 py-10">
+      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} onAuthSuccess={() => setLocation('/events')} />
+    </div>
+  );
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -841,10 +2153,90 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
-function Router({ role }: { role: AccountRole }) {
+function Router({ role, isGuest = false }: { role: AccountRole; isGuest?: boolean }) {
+  const { user } = useUser();
+  const [workspace, setWorkspace] = useState<'customer' | 'organizer' | 'superadmin'>('customer');
+  const [meData, setMeData] = useState<any>(null);
   const [checkedIn, setCheckedIn] = useState(liveEvent.checkedIn);
-  const checkIn = () => setCheckedIn(value => value + 1);
-  return <AppShell checkedIn={checkedIn} role={role}><RoutedErrorBoundary><Switch><Route path="/"><Overview checkedIn={checkedIn} /></Route><Route path="/events"><EventDiscoveryPage /></Route><Route path="/cart"><CartPage /></Route><Route path="/buy"><BuyerCheckout /></Route><Route path="/tickets"><BuyerCheckout /></Route><Route path="/check-in"><Scanner onCheckIn={checkIn} checkedIn={checkedIn} /></Route><Route path="/dashboard/check-in"><Scanner onCheckIn={checkIn} checkedIn={checkedIn} /></Route><Route path="/history"><HistoryPage /></Route><Route path="/settings"><SettingsPage /></Route><Route><NotFound /></Route></Switch></RoutedErrorBoundary></AppShell>;
+  const [, setLocation] = useLocation();
+
+  const fetchStatus = () => {
+    fetch(`${basePath}/api/overview`)
+      .then(res => res.json())
+      .then(data => {
+        if (typeof data.checkedIn === 'number') {
+          setCheckedIn(data.checkedIn);
+        }
+      })
+      .catch(err => console.error('[Overview Sync] Failed:', err));
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isGuest && user?.id) {
+      const token = (window as any).__firebaseToken;
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      fetch(`${basePath}/api/users/me`, { headers })
+        .then(res => res.json())
+        .then(data => {
+          setMeData(data);
+          if (data.platformRole === 'SUPER_ADMIN') {
+            setWorkspace('superadmin');
+            setLocation('/superadmin');
+          } else if (data.businesses?.length > 0) {
+            setWorkspace('organizer');
+            setLocation('/organizer');
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [user?.id, isGuest]);
+
+  const checkIn = (ticket: Ticket) => {
+    setCheckedIn(value => value + 1);
+    fetchStatus();
+  };
+
+  return (
+    <AppShell 
+      checkedIn={checkedIn} 
+      role={role} 
+      isGuest={isGuest} 
+      workspace={workspace} 
+      setWorkspace={setWorkspace} 
+      meData={meData}
+    >
+      <RoutedErrorBoundary>
+        <Switch>
+          <Route path="/"><Overview checkedIn={checkedIn} /></Route>
+          <Route path="/events"><EventDiscoveryPage /></Route>
+          <Route path="/cart"><CartPage /></Route>
+          <Route path="/buy"><BuyerCheckout /></Route>
+          <Route path="/tickets"><AttendeeTicketsWallet /></Route>
+          <Route path="/check-in"><Scanner onCheckIn={checkIn} checkedIn={checkedIn} /></Route>
+          <Route data-testid="route-dashboard-check-in" path="/dashboard/check-in"><Scanner onCheckIn={checkIn} checkedIn={checkedIn} /></Route>
+          <Route path="/history"><HistoryPage /></Route>
+          <Route path="/settings"><SettingsPage /></Route>
+          
+          {/* New Multi-Tenant SaaS Dashboards */}
+          <Route path="/organizer">
+            <OrganizerDashboard user={user} basePath={basePath} />
+          </Route>
+          <Route path="/superadmin">
+            <SuperAdminDashboard user={user} basePath={basePath} />
+          </Route>
+
+          <Route><NotFound /></Route>
+        </Switch>
+      </RoutedErrorBoundary>
+    </AppShell>
+  );
 }
 
 function AuthenticatedExperience() {
@@ -872,16 +2264,74 @@ function AuthenticatedExperience() {
   }, [role, user]);
 
   if (!isLoaded) return <div className="flex min-h-[100dvh] items-center justify-center bg-secondary text-secondary-foreground"><div className="flex items-center gap-2 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-primary soft-pulse" /> Loading your account…</div></div>;
-  if (!isSignedIn || !user) return location === '/' ? <LandingPage /> : <Redirect to="/sign-in" />;
+
+  // Publicly accessible paths for guest browsing
+  const isPublicRoute = ['/', '/events', '/buy', '/cart', '/sign-in', '/sign-up', '/signin', '/signup', '/login', '/register'].includes(location);
+
+  if (!isSignedIn || !user) {
+    if (location === '/') {
+      return <LandingPage />;
+    }
+    if (['/sign-in', '/signin', '/login'].includes(location)) {
+      return <SignInPage />;
+    }
+    if (['/sign-up', '/signup', '/register'].includes(location)) {
+      return <SignUpPage />;
+    }
+    if (isPublicRoute) {
+      // Force attendee layout views for unregistered guest shoppers
+      return <Router role="attendee" isGuest={true} />;
+    }
+    return <Redirect to="/sign-in" />;
+  }
+
   if (!role) return <RoleChooser userId={user.id} userName={user.firstName ?? user.primaryEmailAddress?.emailAddress ?? 'there'} onChoose={(nextRole) => { window.localStorage.setItem(`event-check-in:role:${user.id}`, nextRole); setRole(nextRole); setOnboardingComplete(false); }} />;
   if (!onboardingComplete) return role === 'attendee' ? <AttendeeOnboarding user={user} onComplete={() => { setOnboardingComplete(true); setLocation('/events'); }} /> : <OrganizerOnboarding userId={user.id} onComplete={() => { setOnboardingComplete(true); setLocation('/'); }} />;
-  if (role === 'attendee' && !['/events', '/cart', '/buy', '/tickets'].includes(location)) return <Redirect to="/events" />;
+  if (role === 'attendee' && !['/events', '/cart', '/buy', '/tickets', '/superadmin', '/organizer'].includes(location)) return <Redirect to="/events" />;
   return <Router role={role} />;
 }
 
 function ClerkApp() {
   const [, setLocation] = useLocation();
-  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{ signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to access your event account' } }, signUp: { start: { title: 'Create your account', subtitle: 'Choose your Event Check-In workspace next' } } }} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Switch><Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} /><Route component={AuthenticatedExperience} /></Switch><Toaster /></TooltipProvider></QueryClientProvider></ClerkProvider>;
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to access your event account' } },
+        signUp: { start: { title: 'Create your account', subtitle: 'Choose your Event Check-In workspace next' } }
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <TooltipProvider>
+          <Switch>
+            <Route path="/sign-in"><SignInPage /></Route>
+            <Route path="/sign-in/*"><SignInPage /></Route>
+            <Route path="/signin"><SignInPage /></Route>
+            <Route path="/signin/*"><SignInPage /></Route>
+            <Route path="/login"><SignInPage /></Route>
+            <Route path="/login/*"><SignInPage /></Route>
+
+            <Route path="/sign-up"><SignUpPage /></Route>
+            <Route path="/sign-up/*"><SignUpPage /></Route>
+            <Route path="/signup"><SignUpPage /></Route>
+            <Route path="/signup/*"><SignUpPage /></Route>
+            <Route path="/register"><SignUpPage /></Route>
+            <Route path="/register/*"><SignUpPage /></Route>
+
+            <Route component={AuthenticatedExperience} />
+          </Switch>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
 }
 
 function App() {
