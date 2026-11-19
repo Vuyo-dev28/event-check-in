@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import QRCode from "qrcode";
 import { TicketPdf, type TicketData } from "./TicketPdf";
-import { Ticket as TicketIcon } from "lucide-react";
+import { Download } from "lucide-react";
 
 interface Props {
   ticket: TicketData;
@@ -16,7 +16,6 @@ export default function TicketPdfButton({ ticket }: Props) {
     let cancelled = false;
     async function prepareQr() {
       try {
-        // Enforce secure verification URL encoded in the QR code
         const verificationUrl = `${window.location.origin}/ticket/verify/${encodeURIComponent(ticket.token)}`;
         const qr = await QRCode.toDataURL(verificationUrl, {
           width: 300,
@@ -27,14 +26,10 @@ export default function TicketPdfButton({ ticket }: Props) {
             light: "#ffffff",
           },
         });
-        if (!cancelled) {
-          setQrDataUrl(qr);
-        }
+        if (!cancelled) setQrDataUrl(qr);
       } catch (err) {
         console.error("Failed to generate QR data url for PDF:", err);
-        if (!cancelled) {
-          setError("QR Generation failed");
-        }
+        if (!cancelled) setError("QR error");
       }
     }
 
@@ -45,11 +40,7 @@ export default function TicketPdfButton({ ticket }: Props) {
   }, [ticket.token]);
 
   if (error) {
-    return (
-      <span className="text-xs text-destructive font-bold">
-        {error}
-      </span>
-    );
+    return <span className="text-xs text-destructive font-bold">{error}</span>;
   }
 
   if (!qrDataUrl) {
@@ -59,7 +50,7 @@ export default function TicketPdfButton({ ticket }: Props) {
         className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[10px] font-bold opacity-50 cursor-not-allowed"
       >
         <span className="h-2 w-2 rounded-full border border-current border-t-transparent animate-spin" />
-        Preparing PDF...
+        Preparing PDF
       </button>
     );
   }
@@ -68,12 +59,12 @@ export default function TicketPdfButton({ ticket }: Props) {
     <PDFDownloadLink
       document={<TicketPdf ticket={ticket} qrDataUrl={qrDataUrl} />}
       fileName={`${ticket.ticketNumber}.pdf`}
-      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-sidebar px-3 py-2 text-[10px] font-bold text-foreground hover:bg-muted transition-all"
+      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2 text-[10px] font-bold text-secondary-foreground hover:brightness-110 transition-all"
     >
       {({ loading }) => (
         <>
-          <TicketIcon size={12} />
-          {loading ? "Generating PDF..." : "Download PDF Pass"}
+          <Download size={12} />
+          {loading ? "Generating..." : "PDF Pass"}
         </>
       )}
     </PDFDownloadLink>

@@ -79,11 +79,14 @@
     "@clerk/react": "^6.15.1",
     "@clerk/themes": "^2.4.57",
     "@react-pdf/renderer": "^4.9.0",
+    "@types/nodemailer": "^8.0.2",
     "dotenv": "^18.0.5",
     "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
     "firebase": "^12.19.0",
     "firebase-admin": "^14.5.0",
+    "jsqr": "^1.4.0",
+    "nodemailer": "^10.6.0",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4"
   }

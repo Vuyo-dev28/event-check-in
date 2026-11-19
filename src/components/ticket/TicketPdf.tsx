@@ -7,7 +7,6 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 
-// Styles for the landscape ticket layout (A5 orientation)
 const styles = StyleSheet.create({
   page: {
     padding: 24,
@@ -59,15 +58,15 @@ const styles = StyleSheet.create({
   },
   eventName: {
     marginTop: 4,
-    fontSize: 20,
+    fontSize: 18,
     color: "#111827",
     fontWeight: "bold",
   },
   details: {
     display: "flex",
     flexDirection: "row",
-    marginTop: 16,
-    gap: 16,
+    marginTop: 14,
+    gap: 14,
   },
   detail: {
     flex: 1,
@@ -88,7 +87,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: "#e5e7eb",
-    marginVertical: 14,
+    marginVertical: 12,
   },
   infoGrid: {
     display: "flex",
@@ -138,7 +137,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   footer: {
-    marginTop: 16,
+    marginTop: 14,
     fontSize: 5.5,
     color: "#9ca3af",
     lineHeight: 1.4,
@@ -149,12 +148,16 @@ export interface TicketData {
   id: number;
   ticketNumber: string;
   token: string;
-  buyerName: string;
-  buyerEmail: string;
+  buyerName?: string;
+  buyerEmail?: string;
   attendeeName: string;
   attendeeEmail: string;
   type: string;
   eventName: string;
+  eventDate?: string;
+  startTime?: string;
+  venue?: string;
+  orderNumber?: string;
   status: string;
   cashlessNumber?: string;
   cashlessBalance?: number;
@@ -165,29 +168,28 @@ interface TicketPdfProps {
   qrDataUrl: string;
 }
 
-export function TicketPdf({
-  ticket,
-  qrDataUrl,
-}: TicketPdfProps) {
+export function TicketPdf({ ticket, qrDataUrl }: TicketPdfProps) {
+  const dateDisplay = ticket.eventDate
+    ? ticket.startTime
+      ? `${ticket.eventDate} · ${ticket.startTime}`
+      : ticket.eventDate
+    : "See Event Page";
+  const venueDisplay = ticket.venue || "Venue TBA";
+  const orderRef = ticket.orderNumber || `TKT-${ticket.id}`;
+
   return (
     <Document
       title={`${ticket.eventName} - ${ticket.ticketNumber}`}
-      author="Event Check-In Platform"
-      subject="Digital Pass"
+      author="Howler Tickets Marketplace"
+      subject="Digital Event Pass"
     >
-      <Page
-        size="A5"
-        orientation="landscape"
-        style={styles.page}
-      >
+      <Page size="A5" orientation="landscape" style={styles.page}>
         <View style={styles.ticket}>
-          {/* LEFT DARK FLAP */}
           <View style={styles.artwork}>
-            <Text style={styles.artworkTitle}>NORTHSTAR</Text>
+            <Text style={styles.artworkTitle}>EVENT PASS</Text>
             <Text style={styles.artworkBottom}>ADMIT ONE</Text>
           </View>
 
-          {/* MAIN PORTION */}
           <View style={styles.main}>
             <View>
               <Text style={styles.eyebrow}>Verified Entrance Entitlement</Text>
@@ -197,15 +199,15 @@ export function TicketPdf({
             <View style={styles.details}>
               <View style={styles.detail}>
                 <Text style={styles.label}>Date & Time</Text>
-                <Text style={styles.value}>Today · 18 June 2024</Text>
+                <Text style={styles.value}>{dateDisplay}</Text>
               </View>
               <View style={styles.detail}>
                 <Text style={styles.label}>Venue</Text>
-                <Text style={styles.value}>Pier 48, San Francisco</Text>
+                <Text style={styles.value}>{venueDisplay}</Text>
               </View>
               <View style={styles.detail}>
                 <Text style={styles.label}>Order Ref</Text>
-                <Text style={styles.value}>ORD-{ticket.id * 123 + 456}</Text>
+                <Text style={styles.value}>{orderRef}</Text>
               </View>
             </View>
 
@@ -222,22 +224,21 @@ export function TicketPdf({
               </View>
               <View style={styles.info}>
                 <Text style={styles.label}>RFID Cashless</Text>
-                <Text style={styles.value}>{ticket.cashlessNumber || "No RFID"}</Text>
+                <Text style={styles.value}>{ticket.cashlessNumber || "Unlinked"}</Text>
               </View>
             </View>
 
             <Text style={styles.footer}>
-              This digital pass is validated electronically at the gates. Do not duplicate.
-              RFID cashless top-ups and spending can be managed directly from your attendee portal dashboard.
+              This digital pass is validated electronically once at the venue gate. Do not duplicate or share your QR token publicly.
+              Manage transfers or cashless top-ups from your My Tickets dashboard.
             </Text>
           </View>
 
-          {/* QR STUB SECTION */}
           <View style={styles.qrSection}>
             <Text style={styles.ticketType}>{ticket.type}</Text>
             <Image src={qrDataUrl} style={styles.qr} />
             <Text style={styles.ticketNumber}>{ticket.ticketNumber}</Text>
-            <Text style={styles.admit}>ADMIT ONE</Text>
+            <Text style={styles.admit}>{ticket.status === "VALID" ? "ADMIT ONE" : ticket.status}</Text>
           </View>
         </View>
       </Page>
@@ -252,80 +253,76 @@ interface BulkTicketsPdfProps {
 
 export function BulkTicketsPdf({ tickets, qrDataUrls }: BulkTicketsPdfProps) {
   return (
-    <Document
-      title="All Passes"
-      author="Event Check-In Platform"
-      subject="Digital Passes"
-    >
-      {tickets.map((ticket) => (
-        <Page
-          key={ticket.ticketNumber}
-          size="A5"
-          orientation="landscape"
-          style={styles.page}
-        >
-          <View style={styles.ticket}>
-            {/* LEFT DARK FLAP */}
-            <View style={styles.artwork}>
-              <Text style={styles.artworkTitle}>NORTHSTAR</Text>
-              <Text style={styles.artworkBottom}>ADMIT ONE</Text>
-            </View>
-
-            {/* MAIN PORTION */}
-            <View style={styles.main}>
-              <View>
-                <Text style={styles.eyebrow}>Verified Entrance Entitlement</Text>
-                <Text style={styles.eventName}>{ticket.eventName}</Text>
+    <Document title="All Event Passes" author="Howler Tickets Marketplace" subject="Digital Passes">
+      {tickets.map((ticket) => {
+        const dateDisplay = ticket.eventDate
+          ? ticket.startTime
+            ? `${ticket.eventDate} · ${ticket.startTime}`
+            : ticket.eventDate
+          : "See Event Page";
+        const venueDisplay = ticket.venue || "Venue TBA";
+        const orderRef = ticket.orderNumber || `TKT-${ticket.id}`;
+        return (
+          <Page key={ticket.ticketNumber} size="A5" orientation="landscape" style={styles.page}>
+            <View style={styles.ticket}>
+              <View style={styles.artwork}>
+                <Text style={styles.artworkTitle}>EVENT PASS</Text>
+                <Text style={styles.artworkBottom}>ADMIT ONE</Text>
               </View>
 
-              <View style={styles.details}>
-                <View style={styles.detail}>
-                  <Text style={styles.label}>Date & Time</Text>
-                  <Text style={styles.value}>Today · 18 June 2024</Text>
+              <View style={styles.main}>
+                <View>
+                  <Text style={styles.eyebrow}>Verified Entrance Entitlement</Text>
+                  <Text style={styles.eventName}>{ticket.eventName}</Text>
                 </View>
-                <View style={styles.detail}>
-                  <Text style={styles.label}>Venue</Text>
-                  <Text style={styles.value}>Pier 48, San Francisco</Text>
+
+                <View style={styles.details}>
+                  <View style={styles.detail}>
+                    <Text style={styles.label}>Date & Time</Text>
+                    <Text style={styles.value}>{dateDisplay}</Text>
+                  </View>
+                  <View style={styles.detail}>
+                    <Text style={styles.label}>Venue</Text>
+                    <Text style={styles.value}>{venueDisplay}</Text>
+                  </View>
+                  <View style={styles.detail}>
+                    <Text style={styles.label}>Order Ref</Text>
+                    <Text style={styles.value}>{orderRef}</Text>
+                  </View>
                 </View>
-                <View style={styles.detail}>
-                  <Text style={styles.label}>Order Ref</Text>
-                  <Text style={styles.value}>ORD-{ticket.id * 123 + 456}</Text>
+
+                <View style={styles.divider} />
+
+                <View style={styles.infoGrid}>
+                  <View style={styles.info}>
+                    <Text style={styles.label}>Assigned Attendee</Text>
+                    <Text style={styles.value}>{ticket.attendeeName}</Text>
+                  </View>
+                  <View style={styles.info}>
+                    <Text style={styles.label}>Tier</Text>
+                    <Text style={styles.value}>{ticket.type}</Text>
+                  </View>
+                  <View style={styles.info}>
+                    <Text style={styles.label}>RFID Cashless</Text>
+                    <Text style={styles.value}>{ticket.cashlessNumber || "Unlinked"}</Text>
+                  </View>
                 </View>
+
+                <Text style={styles.footer}>
+                  This digital pass is validated electronically once at the venue gate. Do not duplicate or share your QR token publicly.
+                </Text>
               </View>
 
-              <View style={styles.divider} />
-
-              <View style={styles.infoGrid}>
-                <View style={styles.info}>
-                  <Text style={styles.label}>Assigned Attendee</Text>
-                  <Text style={styles.value}>{ticket.attendeeName}</Text>
-                </View>
-                <View style={styles.info}>
-                  <Text style={styles.label}>Tier</Text>
-                  <Text style={styles.value}>{ticket.type}</Text>
-                </View>
-                <View style={styles.info}>
-                  <Text style={styles.label}>RFID Cashless</Text>
-                  <Text style={styles.value}>{ticket.cashlessNumber || "No RFID"}</Text>
-                </View>
+              <View style={styles.qrSection}>
+                <Text style={styles.ticketType}>{ticket.type}</Text>
+                <Image src={qrDataUrls[ticket.ticketNumber] || ""} style={styles.qr} />
+                <Text style={styles.ticketNumber}>{ticket.ticketNumber}</Text>
+                <Text style={styles.admit}>{ticket.status === "VALID" ? "ADMIT ONE" : ticket.status}</Text>
               </View>
-
-              <Text style={styles.footer}>
-                This digital pass is validated electronically at the gates. Do not duplicate.
-                RFID cashless top-ups and spending can be managed directly from your attendee portal dashboard.
-              </Text>
             </View>
-
-            {/* QR STUB SECTION */}
-            <View style={styles.qrSection}>
-              <Text style={styles.ticketType}>{ticket.type}</Text>
-              <Image src={qrDataUrls[ticket.ticketNumber] || ""} style={styles.qr} />
-              <Text style={styles.ticketNumber}>{ticket.ticketNumber}</Text>
-              <Text style={styles.admit}>ADMIT ONE</Text>
-            </View>
-          </View>
-        </Page>
-      ))}
+          </Page>
+        );
+      })}
     </Document>
   );
 }

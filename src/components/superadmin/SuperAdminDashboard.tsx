@@ -1,510 +1,692 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  Building2, 
-  CalendarDays, 
-  ShoppingBag, 
-  Users, 
-  Settings, 
-  Plus, 
-  MapPin, 
-  Ticket, 
-  Radio, 
-  CreditCard, 
-  ArrowRight,
-  TrendingUp,
-  ShieldCheck,
-  CheckCircle,
+import React, { useEffect, useState } from 'react';
+import {
+  Building2,
+  CalendarDays,
+  CreditCard,
+  Download,
   FileText,
-  AlertTriangle,
-  RefreshCw,
-  LogOut,
-  Mail,
-  Zap,
+  LayoutDashboard,
   Percent,
-  Coins
+  RefreshCw,
+  Settings,
+  ShieldAlert,
+  Users,
+  Wallet,
 } from 'lucide-react';
+import { apiFetch, formatZarFromCents } from '../../lib/api.ts';
+import { useAuthContext } from '../../lib/clerk-wrapper.tsx';
 
-interface Props {
-  user: any;
-  basePath: string;
-}
+export type AdminSection =
+  | 'overview'
+  | 'businesses'
+  | 'events'
+  | 'customers'
+  | 'transactions'
+  | 'payouts'
+  | 'refunds'
+  | 'reports'
+  | 'settings'
+  | 'audit-logs';
 
-export default function SuperAdminDashboard({ user, basePath }: Props) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'businesses' | 'payouts' | 'settings' | 'audit'>('overview');
-  const [metrics, setMetrics] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Settings state
-  const [settingsForm, setSettingsForm] = useState({
+export default function SuperAdminDashboard({
+  section,
+  onNavigate,
+}: {
+  section: AdminSection;
+  onNavigate: (path: string) => void;
+}) {
+  const { isSignedIn, isLoaded, meData } = useAuthContext();
+  const [data, setData] = useState<any | null>(null);
+  const [rules, setRules] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>({
     platformName: 'Howler Tickets',
-    currency: 'R',
+    currency: 'ZAR',
     platformFeePercent: 5,
     platformFixedFee: 10,
     supportEmail: 'support@howlertickets.com',
     businessApprovalRequired: true,
+    eventApprovalRequired: false,
   });
 
-  // Payout Form
-  const [payoutForm, setPayoutForm] = useState({
-    businessId: '',
-    amount: 100,
-    notes: '',
-  });
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Refund Order states
-  const [refundOrderId, setRefundOrderId] = useState('');
-  const [refundStatusMessage, setRefundStatusMessage] = useState('');
+  const [selectedBiz, setSelectedBiz] = useState<any | null>(null);
+  const [payoutForm, setPayoutForm] = useState({ businessId: '', amount: 100, notes: '' });
+  const [ruleForm, setRuleForm] = useState({ scope: 'PLATFORM', businessId: '', commissionBps: 500, fixedFeeCents: 0, bookingFeeBps: 350 });
+
+  const loadAdmin = async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    const [dashRes, setRes, rulesRes] = await Promise.all([
+      apiFetch(`/api/admin/dashboard?${params.toString()}`),
+      apiFetch('/api/admin/settings'),
+      apiFetch('/api/admin/commission-rules'),
+    ]);
+    if (dashRes.ok) {
+      setData(dashRes.data);
+      if (!payoutForm.businessId && dashRes.data?.businesses?.[0]) {
+        setPayoutForm((p) => ({ ...p, businessId: String(dashRes.data.businesses[0].id) }));
+      }
+    } else {
+      setErrorMsg(dashRes.data?.error || 'Super Admin privileges required.');
+    }
+    if (setRes.ok && setRes.data) {
+      setSettings({
+        ...setRes.data,
+        businessApprovalRequired: setRes.data.businessApprovalRequired === 1,
+        eventApprovalRequired: setRes.data.eventApprovalRequired === 1,
+      });
+    }
+    if (rulesRes.ok && Array.isArray(rulesRes.data)) setRules(rulesRes.data);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    fetchDashboardData();
-    fetchSettings();
-  }, []);
+    if (isLoaded && isSignedIn) loadAdmin();
+    else if (isLoaded) setLoading(false);
+  }, [isLoaded, isSignedIn, dateFrom, dateTo]);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/dashboard`, { headers });
-      const data = await res.json();
-      setMetrics(data);
-      setLoading(false);
-    } catch (e) {
-      console.error(e);
-      setLoading(false);
-    }
-  };
-
-  const fetchSettings = async () => {
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/settings`, { headers });
-      const data = await res.json();
-      if (data) {
-        setSettingsForm({
-          platformName: data.platformName,
-          currency: data.currency,
-          platformFeePercent: data.platformFeePercent,
-          platformFixedFee: data.platformFixedFee,
-          supportEmail: data.supportEmail,
-          businessApprovalRequired: data.businessApprovalRequired === 1,
-        });
-      }
-    } catch (e) {}
-  };
-
-  const handleUpdateBusinessStatus = async (bizId: number, status: string) => {
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/businesses/${bizId}/status`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) {
-        fetchDashboardData();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/settings`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(settingsForm),
-      });
-      if (res.ok) {
-        alert('Platform settings saved successfully.');
-        fetchSettings();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleDispatchPayout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!payoutForm.businessId) return;
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/payouts`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          businessId: Number(payoutForm.businessId),
-          amount: Number(payoutForm.amount),
-          notes: payoutForm.notes,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert('Payout processed successfully!');
-        setPayoutForm({ businessId: '', amount: 100, notes: '' });
-        fetchDashboardData();
-      } else {
-        alert(data.error || 'Failed to dispatch payout.');
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleRefundOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!refundOrderId.trim()) return;
-    setRefundStatusMessage('');
-    try {
-      const token = (window as any).__firebaseToken;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${basePath}/api/admin/orders/${refundOrderId}/refund`, {
-        method: 'POST',
-        headers,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRefundStatusMessage('Order successfully fully refunded and tickets invalidated.');
-        setRefundOrderId('');
-        fetchDashboardData();
-      } else {
-        setRefundStatusMessage(data.error || 'Refund transaction failed.');
-      }
-    } catch (e) {
-      setRefundStatusMessage('Error executing refund.');
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/60 pb-5 text-left">
-        <div>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><ShieldCheck size={12} className="text-primary" /> GLOBAL SYSTEM PLATFORM ADMINISTRATION</span>
-          <h1 className="text-2xl font-extrabold tracking-tight mt-1">Super Admin Dashboard</h1>
-        </div>
-        <button 
-          onClick={fetchDashboardData}
-          className="flex items-center gap-2 self-start rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold hover:bg-muted"
+  if (isLoaded && (!isSignedIn || !['SUPER_ADMIN', 'ADMIN'].includes(meData?.platformRole || ''))) {
+    return (
+      <div className="max-w-lg mx-auto rounded-2xl border border-border bg-card p-8 text-center space-y-4 my-10">
+        <ShieldAlert className="mx-auto h-9 w-9 text-destructive" />
+        <h2 className="text-xl font-extrabold text-foreground">Super Admin Governance Portal</h2>
+        <p className="text-xs text-muted-foreground">
+          Restricted access. Please sign in with an authorized platform administrator account.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            window.sessionStorage.setItem('event-check-in:return-url', '/admin');
+            onNavigate('/login');
+          }}
+          className="rounded-xl bg-primary px-6 py-2.5 text-xs font-extrabold text-primary-foreground"
         >
-          <RefreshCw size={13} /> Refresh Global Stats
+          Sign In as Admin
         </button>
       </div>
+    );
+  }
 
-      <div className="grid gap-4 md:grid-cols-5">
-        <aside className="space-y-1 md:col-span-1">
-          {[
-            { id: 'overview', label: 'Platform Summary', icon: LayoutDashboard },
-            { id: 'businesses', label: 'Businesses & Approval', icon: Building2 },
-            { id: 'payouts', label: 'Payout Dispatcher', icon: CreditCard },
-            { id: 'settings', label: 'Platform Settings', icon: Settings },
-            { id: 'audit', label: 'System Audit Logs', icon: FileText },
-          ].map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition ${active ? 'bg-primary text-primary-foreground font-extrabold shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
-              >
-                <tab.icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </aside>
+  const updateBusinessStatus = async (bizId: number, payload: any) => {
+    setErrorMsg(null);
+    const res = await apiFetch(`/api/admin/businesses/${bizId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      setNotice(`Business #${bizId} updated.`);
+      loadAdmin();
+    } else {
+      setErrorMsg(res.data?.error || 'Update failed.');
+    }
+  };
 
-        <main className="md:col-span-4 bg-card border border-border/80 rounded-2xl p-6 shadow-xs">
-          {loading ? (
-            <div className="text-center py-12 text-xs font-bold text-muted-foreground animate-pulse">Syncing platform system logs...</div>
-          ) : activeTab === 'overview' ? (
-            <div className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-left">
-                <div className="rounded-xl border border-border p-4 bg-muted/20">
-                  <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Gross Platform Sales</div>
-                  <div className="text-2xl font-extrabold mt-1 text-primary">R{metrics?.summary?.totalRevenue || 0}</div>
-                  <div className="text-[9px] text-muted-foreground mt-1">Platform Fees Cut: R{metrics?.summary?.platformFees || 0}</div>
-                </div>
-                <div className="rounded-xl border border-border p-4 bg-muted/20">
-                  <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Total Tickets Sold</div>
-                  <div className="text-2xl font-extrabold mt-1">{metrics?.summary?.ticketsSold || 0}</div>
-                  <div className="text-[9px] text-muted-foreground mt-1">Checked In (RFID Sync): {metrics?.summary?.checkedIn || 0}</div>
-                </div>
-                <div className="rounded-xl border border-border p-4 bg-muted/20">
-                  <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Active Events</div>
-                  <div className="text-2xl font-extrabold mt-1">{metrics?.summary?.activeEvents || 0}</div>
-                  <div className="text-[9px] text-muted-foreground mt-1">Businesses Registered: {metrics?.summary?.totalBusinesses || 0}</div>
-                </div>
-                <div className="rounded-xl border border-border p-4 bg-muted/20">
-                  <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Total Refunds</div>
-                  <div className="text-2xl font-extrabold mt-1 text-destructive">R{metrics?.summary?.refundedAmt || 0}</div>
-                  <div className="text-[9px] text-muted-foreground mt-1">Invalidated passes</div>
-                </div>
-              </div>
+  const moderateEvent = async (eventId: number, payload: any) => {
+    const res = await apiFetch(`/api/admin/events/${eventId}/moderate`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      setNotice(`Event #${eventId} updated.`);
+      loadAdmin();
+    }
+  };
 
-              {/* Order Refund Form Block */}
-              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-left max-w-xl">
-                <h4 className="text-xs font-bold text-destructive uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertTriangle size={13} /> Order Cancellation & Full Pass Refund
-                </h4>
-                <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                  Enter an internal order ID to fully refund, add back ticket capacities, and invalidate the QR secure credentials for validation immediately.
-                </p>
-                <form onSubmit={handleRefundOrder} className="flex gap-2 mt-3.5">
-                  <input 
-                    required 
-                    type="number"
-                    placeholder="Enter order ID (e.g. 1)" 
-                    value={refundOrderId}
-                    onChange={e => setRefundOrderId(e.target.value)}
-                    className="min-w-0 flex-1 rounded-lg border border-input bg-card px-3 py-2 text-xs outline-none focus:border-destructive"
-                  />
-                  <button type="submit" className="rounded-lg bg-destructive text-destructive-foreground px-4 py-2 text-xs font-bold hover:brightness-95">
-                    Execute Refund
-                  </button>
-                </form>
-                {refundStatusMessage && (
-                  <p className="text-[10px] font-bold text-destructive bg-destructive/10 p-2.5 rounded-lg mt-3 text-center">
-                    {refundStatusMessage}
-                  </p>
-                )}
-              </div>
+  const processRefund = async (refundId: number, decision: 'APPROVE' | 'REJECT') => {
+    const res = await apiFetch(`/api/admin/refunds/${refundId}/process`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+    if (res.ok) {
+      setNotice(`Refund #${refundId} ${decision === 'APPROVE' ? 'approved & reversed' : 'rejected'}.`);
+      loadAdmin();
+    } else {
+      setErrorMsg(res.data?.error || 'Refund failed.');
+    }
+  };
 
+  const dispatchPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const res = await apiFetch('/api/admin/payouts', {
+      method: 'POST',
+      body: JSON.stringify(payoutForm),
+    });
+    if (res.ok) {
+      setNotice(`Payout ${res.data.payout.reference} disbursed.`);
+      loadAdmin();
+    } else {
+      setErrorMsg(res.data?.error || 'Payout failed.');
+    }
+  };
+
+  const saveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await apiFetch('/api/admin/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    });
+    if (res.ok) {
+      setNotice('Platform settings saved.');
+      loadAdmin();
+    }
+  };
+
+  const createRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await apiFetch('/api/admin/commission-rules', {
+      method: 'POST',
+      body: JSON.stringify(ruleForm),
+    });
+    if (res.ok) {
+      setNotice('Commission rule saved.');
+      loadAdmin();
+    }
+  };
+
+  const downloadCsv = (filename: string, rows: string[][]) => {
+    const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const navItems: Array<{ id: AdminSection; label: string; path: string; icon: any }> = [
+    { id: 'overview', label: 'Overview', path: '/admin', icon: LayoutDashboard },
+    { id: 'businesses', label: 'Businesses', path: '/admin/businesses', icon: Building2 },
+    { id: 'events', label: 'Events', path: '/admin/events', icon: CalendarDays },
+    { id: 'customers', label: 'Customers', path: '/admin/customers', icon: Users },
+    { id: 'transactions', label: 'Transactions', path: '/admin/transactions', icon: CreditCard },
+    { id: 'payouts', label: 'Payouts', path: '/admin/payouts', icon: Wallet },
+    { id: 'refunds', label: 'Refunds', path: '/admin/refunds', icon: RefreshCw },
+    { id: 'reports', label: 'Reports', path: '/admin/reports', icon: FileText },
+    { id: 'settings', label: 'Settings & Fees', path: '/admin/settings', icon: Settings },
+    { id: 'audit-logs', label: 'Audit Logs', path: '/admin/audit-logs', icon: ShieldAlert },
+  ];
+
+  const summary = data?.summary || {};
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pb-16">
+      <aside className="lg:col-span-3">
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-2">
+          <div className="px-2 pb-2 border-b border-border">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Platform Control</div>
+            <div className="text-sm font-extrabold text-foreground">Super Admin</div>
+          </div>
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onNavigate(item.path)}
+                  className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap transition-colors ${
+                    section === item.id
+                      ? 'bg-secondary text-secondary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Icon size={15} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
+
+      <div className="lg:col-span-9 space-y-6">
+        {notice && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-bold text-foreground">
+            {notice}
+          </div>
+        )}
+        {errorMsg && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs font-bold text-destructive">
+            {errorMsg}
+          </div>
+        )}
+
+        {loading && !data ? (
+          <div className="py-16 text-center text-xs text-muted-foreground">Loading platform telemetry...</div>
+        ) : null}
+
+        {/* Overview */}
+        {section === 'overview' && data && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-extrabold border-b border-border/50 pb-2 mb-3 text-left">Registered Tenants / Venue-Businesses</h3>
-                <div className="overflow-x-auto text-left">
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-border/60 text-muted-foreground font-mono text-[9px] uppercase tracking-wider">
-                        <th className="py-2.5">Business</th>
-                        <th className="py-2.5">Type</th>
-                        <th className="py-2.5">Contact Person</th>
-                        <th className="py-2.5">Gross Sales</th>
-                        <th className="py-2.5">Pending Payout</th>
-                        <th className="py-2.5">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {metrics?.businesses?.map((b: any) => (
-                        <tr key={b.id} className="border-b border-border/40 hover:bg-muted/10">
-                          <td className="py-3 font-bold">{b.name}</td>
-                          <td className="py-3">{b.type}</td>
-                          <td className="py-3 text-muted-foreground">{b.contactPerson}</td>
-                          <td className="py-3 font-mono">R{b.grossSales}</td>
-                          <td className="py-3 font-mono text-emerald-500">R{b.pendingPayout}</td>
-                          <td className="py-3">
-                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${b.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                              {b.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Marketplace Overview</h1>
+                <p className="text-xs text-muted-foreground">Live PostgreSQL aggregates across all businesses & orders</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="onboarding-input py-1.5 w-auto text-xs" />
+                <span className="text-muted-foreground">to</span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="onboarding-input py-1.5 w-auto text-xs" />
               </div>
             </div>
-          ) : activeTab === 'businesses' ? (
-            <div className="space-y-6">
-              <h3 className="text-sm font-extrabold border-b border-border/40 pb-3 text-left">Tenant Approvals & Operations</h3>
-              <div className="space-y-3">
-                {metrics?.businesses?.map((b: any) => (
-                  <div key={b.id} className="rounded-xl border border-border p-4 bg-muted/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-left">
-                    <div>
-                      <h4 className="text-xs font-extrabold">{b.name}</h4>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{b.type} · {b.email} · {b.phone || 'No phone'}</p>
-                      {b.description && <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed italic">{b.description}</p>}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Total Ticket Revenue', val: formatZarFromCents(summary.totalRevenueCents) },
+                { label: 'Platform Commission', val: formatZarFromCents(summary.platformCommissionCents) },
+                { label: 'Pending Payouts', val: formatZarFromCents(summary.pendingPayoutCents) },
+                { label: 'Refunded Volume', val: formatZarFromCents(summary.refundedAmtCents) },
+                { label: 'Businesses (Active)', val: `${summary.totalBusinesses} (${summary.activeBusinesses})` },
+                { label: 'Events (Published)', val: `${summary.totalEvents} (${summary.publishedEvents})` },
+                { label: 'Registered Customers', val: String(summary.totalCustomers ?? 0) },
+                { label: 'Guest Orders', val: String(summary.guestPurchases ?? 0) },
+                { label: 'Tickets Sold', val: String(summary.ticketsSold ?? 0) },
+                { label: 'Gate Check-Ins', val: String(summary.checkedIn ?? 0) },
+                { label: 'Transactions', val: String(summary.totalTransactions ?? 0) },
+                { label: 'Failed Payments', val: String(summary.failedTransactions ?? 0) },
+              ].map((kpi) => (
+                <div key={kpi.label} className="rounded-2xl border border-border bg-card p-4">
+                  <div className="text-[11px] text-muted-foreground">{kpi.label}</div>
+                  <div className="mt-1 font-mono text-lg font-extrabold text-foreground tabular-nums">{kpi.val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Businesses */}
+        {section === 'businesses' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Businesses & Verification</h1>
+            <div className="space-y-3">
+              {(data.businesses || []).map((b: any) => (
+                <div key={b.id} className="rounded-2xl border border-border bg-card p-5 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                      {b.status} · KYC: {b.verificationStatus} · {b.type}
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      {b.status === 'PENDING' && (
-                        <>
-                          <button 
-                            onClick={() => handleUpdateBusinessStatus(b.id, 'ACTIVE')}
-                            className="rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-bold hover:brightness-95"
-                          >
-                            Approve
-                          </button>
-                          <button 
-                            onClick={() => handleUpdateBusinessStatus(b.id, 'REJECTED')}
-                            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold hover:bg-muted"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {b.status === 'ACTIVE' && (
-                        <button 
-                          onClick={() => handleUpdateBusinessStatus(b.id, 'SUSPENDED')}
-                          className="rounded-lg bg-destructive text-destructive-foreground px-3 py-1.5 text-xs font-bold hover:brightness-95"
-                        >
-                          Suspend Business
-                        </button>
-                      )}
-                      {b.status === 'SUSPENDED' && (
-                        <button 
-                          onClick={() => handleUpdateBusinessStatus(b.id, 'ACTIVE')}
-                          className="rounded-lg bg-emerald-500 text-white px-3 py-1.5 text-xs font-bold hover:brightness-95"
-                        >
-                          Reactivate
-                        </button>
-                      )}
+                    <h3 className="text-base font-extrabold text-foreground mt-0.5">{b.name}</h3>
+                    <div className="text-xs text-muted-foreground">
+                      {b.email} · Gross: {formatZarFromCents(b.grossSalesCents ?? b.grossSales * 100)} · Pending: {formatZarFromCents(b.pendingPayoutCents ?? b.pendingPayout * 100)}
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button type="button" onClick={() => setSelectedBiz(b)} className="rounded-lg border border-border px-3 py-1.5 font-bold hover:bg-muted">
+                      Inspect
+                    </button>
+                    {b.status !== 'ACTIVE' && (
+                      <button type="button" onClick={() => updateBusinessStatus(b.id, { status: 'ACTIVE', verificationStatus: 'VERIFIED' })} className="rounded-lg bg-primary px-3 py-1.5 font-extrabold text-primary-foreground">
+                        Approve & Activate
+                      </button>
+                    )}
+                    {b.status === 'ACTIVE' && (
+                      <button type="button" onClick={() => updateBusinessStatus(b.id, { status: 'SUSPENDED' })} className="rounded-lg border border-destructive/40 px-3 py-1.5 font-bold text-destructive">
+                        Suspend
+                      </button>
+                    )}
+                    {b.status === 'PENDING' || b.status === 'UNDER_REVIEW' ? (
+                      <button type="button" onClick={() => updateBusinessStatus(b.id, { status: 'REJECTED', verificationStatus: 'REJECTED', rejectionReason: 'Incomplete verification documents.' })} className="rounded-lg border border-border px-3 py-1.5 font-bold">
+                        Reject
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
-          ) : activeTab === 'payouts' ? (
-            <div className="space-y-6">
-              <div className="border-b border-border/40 pb-3 text-left">
-                <h3 className="text-sm font-extrabold">Payout Disbursals</h3>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Approve and disburse payout requests from active businesses.</p>
+
+            {selectedBiz && (
+              <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 space-y-3 text-xs">
+                  <h3 className="text-base font-extrabold text-foreground">{selectedBiz.name} · Verification Details</h3>
+                  <div><strong>Email:</strong> {selectedBiz.email}</div>
+                  <div><strong>Reg #:</strong> {selectedBiz.registrationNumber || '—'} · <strong>Tax #:</strong> {selectedBiz.taxNumber || '—'}</div>
+                  <div><strong>Bank:</strong> {selectedBiz.bankName || '—'} · Acc: {selectedBiz.bankAccountNumber || '—'} · Branch: {selectedBiz.bankBranchCode || '—'}</div>
+                  <div><strong>Payout Email:</strong> {selectedBiz.payoutEmail || selectedBiz.email}</div>
+                  <div className="pt-2 flex justify-end gap-2">
+                    <button type="button" onClick={() => setSelectedBiz(null)} className="rounded-xl border border-border px-4 py-2 font-bold">
+                      Close
+                    </button>
+                  </div>
+                </div>
               </div>
+            )}
+          </div>
+        )}
 
-              <form onSubmit={handleDispatchPayout} className="flex gap-3 items-end max-w-xl text-left bg-muted/15 p-4 rounded-xl border border-border">
-                <label className="flex-1">
-                  <span className="block text-[10px] font-bold text-muted-foreground mb-1.5">Select Business</span>
-                  <select required value={payoutForm.businessId} onChange={e => setPayoutForm({ ...payoutForm, businessId: e.target.value })} className="onboarding-input">
-                    <option value="">Choose business</option>
-                    {metrics?.businesses?.filter((b: any) => b.status === 'ACTIVE').map((b: any) => (
-                      <option key={b.id} value={b.id}>{b.name} (Max: R{b.pendingPayout})</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="w-[120px]">
-                  <span className="block text-[10px] font-bold text-muted-foreground mb-1.5">Amount (R)</span>
-                  <input required type="number" value={payoutForm.amount} onChange={e => setPayoutForm({ ...payoutForm, amount: Number(e.target.value) })} className="onboarding-input" />
-                </label>
-                <button type="submit" className="rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-xs font-bold shrink-0">Dispatch</button>
-              </form>
+        {/* Events Moderation */}
+        {section === 'events' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">All Platform Events</h1>
+            <div className="space-y-3">
+              {(data.events || []).map((e: any) => (
+                <div key={e.id} className="rounded-2xl border border-border bg-card p-5 flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                      {e.status} · {e.isFeatured ? 'FEATURED' : 'Standard'} · {e.businessName}
+                    </div>
+                    <h3 className="text-base font-extrabold text-foreground">{e.name}</h3>
+                    <div className="text-xs text-muted-foreground">{e.dateText} · {e.city || e.address}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button type="button" onClick={() => moderateEvent(e.id, { isFeatured: !e.isFeatured })} className="rounded-lg border border-border px-3 py-1.5 font-bold hover:bg-muted">
+                      {e.isFeatured ? 'Unfeature' : 'Feature'}
+                    </button>
+                    {e.status !== 'PUBLISHED' && (
+                      <button type="button" onClick={() => moderateEvent(e.id, { status: 'PUBLISHED' })} className="rounded-lg bg-primary px-3 py-1.5 font-extrabold text-primary-foreground">
+                        Approve / Publish
+                      </button>
+                    )}
+                    {e.status !== 'SUSPENDED' && (
+                      <button type="button" onClick={() => moderateEvent(e.id, { status: 'SUSPENDED' })} className="rounded-lg border border-border px-3 py-1.5 font-bold">
+                        Suspend
+                      </button>
+                    )}
+                    {e.status !== 'CANCELLED' && (
+                      <button type="button" onClick={() => moderateEvent(e.id, { status: 'CANCELLED' })} className="rounded-lg border border-destructive/40 px-3 py-1.5 font-bold text-destructive">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
+        {/* Customers */}
+        {section === 'customers' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Registered Customers ({(data.customers || []).length})</h1>
+            <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/60 text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Phone / City</th>
+                    <th className="px-4 py-3">Verified</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(data.customers || []).map((c: any) => (
+                    <tr key={c.id}>
+                      <td className="px-4 py-3 font-bold">{c.firstName} {c.lastName}</td>
+                      <td className="px-4 py-3">{c.email}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{c.phone || '—'} · {c.city || '—'}</td>
+                      <td className="px-4 py-3 font-mono font-bold">{c.emailVerified ? 'VERIFIED' : 'PENDING'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Transactions */}
+        {section === 'transactions' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Payment Transactions</h1>
+            <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/60 text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3">Reference</th>
+                    <th className="px-4 py-3">Order #</th>
+                    <th className="px-4 py-3">Provider</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(data.transactions || []).map((tx: any) => (
+                    <tr key={tx.id}>
+                      <td className="px-4 py-3 font-mono font-bold">{tx.reference}</td>
+                      <td className="px-4 py-3 font-mono">{tx.orderNumber}</td>
+                      <td className="px-4 py-3 uppercase">{tx.provider}</td>
+                      <td className="px-4 py-3 text-right font-mono tabular-nums">{formatZarFromCents(tx.amountCents)}</td>
+                      <td className="px-4 py-3 font-bold">{tx.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Payouts */}
+        {section === 'payouts' && data && (
+          <div className="space-y-6">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Payouts Management</h1>
+            <form onSubmit={dispatchPayout} className="rounded-2xl border border-border bg-card p-6 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
               <div>
-                <h4 className="text-xs font-bold border-b border-border/50 pb-2 mb-3 text-left"> payout records</h4>
-                <div className="overflow-x-auto text-left">
-                  <table className="w-full border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-border/60 text-muted-foreground font-mono text-[9px] uppercase tracking-wider">
-                        <th className="py-2.5">Reference</th>
-                        <th className="py-2.5">Business</th>
-                        <th className="py-2.5">Amount</th>
-                        <th className="py-2.5">Status</th>
-                        <th className="py-2.5">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {metrics?.payouts?.map((p: any) => (
-                        <tr key={p.id} className="border-b border-border/40 hover:bg-muted/10">
-                          <td className="py-3 font-mono font-bold">{p.reference}</td>
-                          <td className="py-3 font-bold">{p.businessName}</td>
-                          <td className="py-3 font-mono text-emerald-500">R{p.amount}</td>
-                          <td className="py-3">
-                            <span className="rounded-full bg-emerald-500/15 text-emerald-500 px-2.5 py-0.5 text-[9px] font-bold font-mono">
-                              {p.status}
-                            </span>
-                          </td>
-                          <td className="py-3 text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</td>
-                        </tr>
-                      ))}
-                      {metrics?.payouts?.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="py-6 text-center text-muted-foreground">No payout cycles recorded yet.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <label className="block mb-1 text-[11px] font-bold">Business</label>
+                <select value={payoutForm.businessId} onChange={(e) => setPayoutForm({ ...payoutForm, businessId: e.target.value })} className="onboarding-input py-2 text-xs">
+                  {(data.businesses || []).map((b: any) => (
+                    <option key={b.id} value={b.id}>{b.name} (Pending {formatZarFromCents(b.pendingPayoutCents ?? 0)})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Amount (ZAR)</label>
+                <input type="number" min="1" value={payoutForm.amount} onChange={(e) => setPayoutForm({ ...payoutForm, amount: Number(e.target.value) })} className="onboarding-input py-2 text-xs" />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Notes</label>
+                <input value={payoutForm.notes} onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })} placeholder="Weekly settlement" className="onboarding-input py-2 text-xs" />
+              </div>
+              <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground">
+                Disburse Payout
+              </button>
+            </form>
+
+            <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/60 text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3">Reference</th>
+                    <th className="px-4 py-3">Business</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(data.payouts || []).map((p: any) => (
+                    <tr key={p.id}>
+                      <td className="px-4 py-3 font-mono font-bold">{p.reference}</td>
+                      <td className="px-4 py-3">{p.businessName}</td>
+                      <td className="px-4 py-3 text-right font-mono tabular-nums">{formatZarFromCents(p.amountCents ?? p.amount * 100)}</td>
+                      <td className="px-4 py-3 font-bold">{p.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Refunds */}
+        {section === 'refunds' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Platform Refunds Queue</h1>
+            {(data.refunds || []).length === 0 ? (
+              <div className="rounded-2xl border border-border bg-card p-8 text-center text-xs text-muted-foreground">
+                No refund requests recorded.
+              </div>
+            ) : (
+              (data.refunds || []).map((r: any) => (
+                <div key={r.id} className="rounded-2xl border border-border bg-card p-5 flex flex-wrap items-center justify-between gap-4 text-xs">
+                  <div>
+                    <div className="font-mono font-bold">{r.orderNumber} · {r.businessName} · {r.status}</div>
+                    <div className="mt-0.5 text-foreground font-semibold">{r.requesterEmail} — {formatZarFromCents(r.amountCents)}</div>
+                    <div className="text-muted-foreground">{r.reason}</div>
+                  </div>
+                  {r.status === 'REQUESTED' && (
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => processRefund(r.id, 'APPROVE')} className="rounded-lg bg-primary px-3 py-1.5 font-extrabold text-primary-foreground">
+                        Approve & Reverse
+                      </button>
+                      <button type="button" onClick={() => processRefund(r.id, 'REJECT')} className="rounded-lg border border-border px-3 py-1.5 font-bold">
+                        Reject
+                      </button>
+                    </div>
+                  )}
                 </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Reports */}
+        {section === 'reports' && data && (
+          <div className="space-y-6">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Financial & Marketplace Reports</h1>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 className="text-sm font-extrabold">Orders & Revenue CSV</h2>
+                <p className="text-xs text-muted-foreground">Download all orders with gross sales, commission, and status.</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCsv('platform-orders.csv', [
+                      ['OrderNumber', 'Business', 'Event', 'BuyerEmail', 'TotalCents', 'Status'],
+                      ...(data.orders || []).map((o: any) => [o.orderNumber, o.businessName, o.eventName, o.buyerEmail, String(o.totalCents ?? o.total * 100), o.status]),
+                    ])
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-extrabold text-primary-foreground"
+                >
+                  <Download size={14} /> Download Orders Report
+                </button>
+              </div>
+              <div className="rounded-2xl border border-border bg-card p-6 space-y-3">
+                <h2 className="text-sm font-extrabold">Businesses Settlement CSV</h2>
+                <p className="text-xs text-muted-foreground">Download gross sales, platform fees, and pending payout balances per business.</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCsv('businesses-settlement.csv', [
+                      ['Business', 'Email', 'Status', 'GrossCents', 'PlatformFeeCents', 'PendingPayoutCents'],
+                      ...(data.businesses || []).map((b: any) => [b.name, b.email, b.status, String(b.grossSalesCents ?? 0), String(b.platformFeesCents ?? 0), String(b.pendingPayoutCents ?? 0)]),
+                    ])
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-4 py-2 text-xs font-bold text-secondary-foreground"
+                >
+                  <Download size={14} /> Download Settlement Report
+                </button>
               </div>
             </div>
-          ) : activeTab === 'settings' ? (
-            <div className="space-y-6">
-              <h3 className="text-sm font-extrabold border-b border-border/40 pb-3 text-left">Global Platform Controls</h3>
-              <form onSubmit={handleSaveSettings} className="space-y-4 max-w-xl text-left">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="block text-[10px] font-bold text-muted-foreground mb-1">Platform Name</span>
-                    <input required value={settingsForm.platformName} onChange={e => setSettingsForm({ ...settingsForm, platformName: e.target.value })} className="onboarding-input" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-bold text-muted-foreground mb-1">Currency Symbol</span>
-                    <input required value={settingsForm.currency} onChange={e => setSettingsForm({ ...settingsForm, currency: e.target.value })} className="onboarding-input" />
-                  </label>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="block text-[10px] font-bold text-muted-foreground mb-1">Platform Fee (%)</span>
-                    <input type="number" required value={settingsForm.platformFeePercent} onChange={e => setSettingsForm({ ...settingsForm, platformFeePercent: Number(e.target.value) })} className="onboarding-input" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[10px] font-bold text-muted-foreground mb-1">Fixed Flat Fee (R)</span>
-                    <input type="number" required value={settingsForm.platformFixedFee} onChange={e => setSettingsForm({ ...settingsForm, platformFixedFee: Number(e.target.value) })} className="onboarding-input" />
-                  </label>
-                </div>
-                <label className="block">
-                  <span className="block text-[10px] font-bold text-muted-foreground mb-1">Support Contact Email</span>
-                  <input required type="email" value={settingsForm.supportEmail} onChange={e => setSettingsForm({ ...settingsForm, supportEmail: e.target.value })} className="onboarding-input" />
-                </label>
-                <div className="flex items-center gap-3 py-2 border-t border-b border-border/50">
-                  <input 
-                    type="checkbox" 
-                    id="approval-req"
-                    checked={settingsForm.businessApprovalRequired} 
-                    onChange={e => setSettingsForm({ ...settingsForm, businessApprovalRequired: e.target.checked })}
-                    className="h-4 w-4 rounded-md border-border bg-card"
-                  />
-                  <label htmlFor="approval-req" className="text-xs font-bold text-foreground">Require Admin Approval for new Businesses before selling tickets</label>
-                </div>
-                <button type="submit" className="rounded-xl bg-primary text-primary-foreground px-5 py-3 text-xs font-extrabold hover:brightness-95">
+          </div>
+        )}
+
+        {/* Settings & Commission Rules */}
+        {section === 'settings' && (
+          <div className="space-y-6">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Platform Settings & Commission Rules</h1>
+            <form onSubmit={saveSettings} className="rounded-2xl border border-border bg-card p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Platform Name</label>
+                <input value={settings.platformName} onChange={(e) => setSettings({ ...settings, platformName: e.target.value })} className="onboarding-input" />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Support Email</label>
+                <input value={settings.supportEmail} onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })} className="onboarding-input" />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Default Commission (%)</label>
+                <input type="number" value={settings.platformFeePercent} onChange={(e) => setSettings({ ...settings, platformFeePercent: Number(e.target.value) })} className="onboarding-input" />
+              </div>
+              <div>
+                <label className="block mb-1 text-[11px] font-bold">Default Fixed Fee (ZAR)</label>
+                <input type="number" value={settings.platformFixedFee} onChange={(e) => setSettings({ ...settings, platformFixedFee: Number(e.target.value) })} className="onboarding-input" />
+              </div>
+              <label className="flex items-center gap-2 text-xs font-bold">
+                <input type="checkbox" checked={settings.businessApprovalRequired} onChange={(e) => setSettings({ ...settings, businessApprovalRequired: e.target.checked })} />
+                Require Super Admin approval for new businesses
+              </label>
+              <label className="flex items-center gap-2 text-xs font-bold">
+                <input type="checkbox" checked={settings.eventApprovalRequired} onChange={(e) => setSettings({ ...settings, eventApprovalRequired: e.target.checked })} />
+                Require Super Admin approval before events publish
+              </label>
+              <div className="sm:col-span-2">
+                <button type="submit" className="rounded-xl bg-primary px-5 py-2.5 text-xs font-extrabold text-primary-foreground">
                   Save Platform Settings
+                </button>
+              </div>
+            </form>
+
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
+              <h2 className="text-sm font-extrabold text-foreground flex items-center gap-2">
+                <Percent size={15} /> Commission Rules ({rules.length})
+              </h2>
+              <form onSubmit={createRule} className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 items-end">
+                <div>
+                  <label className="block mb-1 text-[10px] font-bold">Scope</label>
+                  <select value={ruleForm.scope} onChange={(e) => setRuleForm({ ...ruleForm, scope: e.target.value })} className="onboarding-input py-1.5 text-xs">
+                    <option value="PLATFORM">PLATFORM</option>
+                    <option value="BUSINESS">BUSINESS</option>
+                    <option value="EVENT">EVENT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 text-[10px] font-bold">Commission BPS (500 = 5%)</label>
+                  <input type="number" value={ruleForm.commissionBps} onChange={(e) => setRuleForm({ ...ruleForm, commissionBps: Number(e.target.value) })} className="onboarding-input py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[10px] font-bold">Fixed Cents</label>
+                  <input type="number" value={ruleForm.fixedFeeCents} onChange={(e) => setRuleForm({ ...ruleForm, fixedFeeCents: Number(e.target.value) })} className="onboarding-input py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label className="block mb-1 text-[10px] font-bold">Booking Fee BPS</label>
+                  <input type="number" value={ruleForm.bookingFeeBps} onChange={(e) => setRuleForm({ ...ruleForm, bookingFeeBps: Number(e.target.value) })} className="onboarding-input py-1.5 text-xs" />
+                </div>
+                <button type="submit" className="rounded-xl bg-secondary px-4 py-2 text-xs font-bold text-secondary-foreground">
+                  Add Rule
                 </button>
               </form>
             </div>
-          ) : (
-            <div className="space-y-6">
-              <h3 className="text-sm font-extrabold border-b border-border/40 pb-3 text-left">Real-Time Platform Audit Log Streams</h3>
-              <div className="space-y-2 max-h-[500px] overflow-y-auto text-left">
-                {metrics?.auditLogs?.map((log: any) => (
-                  <div key={log.id} className="p-3 bg-muted/10 border border-border/55 rounded-xl text-xs flex justify-between gap-4">
-                    <div>
-                      <div className="font-bold flex items-center gap-1 text-foreground">
-                        <Zap size={11} className="text-primary" /> {log.log.action}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                        Resource: {log.log.resourceType} (#{log.log.resourceId}) · By {log.userName || 'System'}
-                      </div>
-                      {log.log.metadata && (
-                        <div className="text-[9px] font-mono bg-card px-2 py-1 border border-border/50 mt-1.5 rounded-lg text-muted-foreground">{log.log.metadata}</div>
-                      )}
-                    </div>
-                    <span className="font-mono text-[9px] text-muted-foreground shrink-0 mt-0.5">
-                      {new Date(log.log.createdAt).toLocaleTimeString()}
-                    </span>
-                  </div>
-                ))}
-                {metrics?.auditLogs?.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-6">No audit records found.</p>
-                )}
-              </div>
+          </div>
+        )}
+
+        {/* Audit Logs */}
+        {section === 'audit-logs' && data && (
+          <div className="space-y-4">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight text-foreground leading-none">Platform Audit Logs</h1>
+            <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/60 text-muted-foreground border-b border-border">
+                  <tr>
+                    <th className="px-4 py-3">Time</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Actor / Business</th>
+                    <th className="px-4 py-3">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(data.auditLogs || []).map((a: any) => (
+                    <tr key={a.log.id}>
+                      <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">
+                        {a.log.createdAt ? new Date(a.log.createdAt).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-bold">{a.log.action}</td>
+                      <td className="px-4 py-3">{a.userName || 'System'} · {a.businessName || 'Platform'}</td>
+                      <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground truncate max-w-xs">
+                        {a.log.newValue || a.log.metadata || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
     </div>
   );
