@@ -318,7 +318,7 @@ export function registerAdminRoutes(app: Express) {
   // Settings
   app.get('/api/admin/settings', requireAuth, requireSuperAdmin, async (_req, res) => {
     const [settings] = await db.select().from(platformSettings).limit(1);
-    res.json(settings || { platformName: 'Howler Tickets', currency: 'ZAR', platformFeePercent: 5, platformFixedFee: 0 });
+    res.json(settings || { platformName: 'BookMyte', currency: 'ZAR', platformFeePercent: 5, platformFixedFee: 0 });
   });
 
   app.post('/api/admin/settings', requireAuth, requireSuperAdmin, async (req, res) => {

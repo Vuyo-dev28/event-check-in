@@ -1,7 +1,7 @@
 export const basePath = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 
-const CART_SESSION_KEY = 'event-check-in:cart-session';
-const SESSION_TOKEN_KEY = 'event-check-in:session-token';
+const CART_SESSION_KEY = 'bookmyte:cart-session';
+const SESSION_TOKEN_KEY = 'bookmyte:session-token';
 
 export function getOrCreateCartSessionId(): string {
   if (typeof window === 'undefined') return 'ssr-cart-session';

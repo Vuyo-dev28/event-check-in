@@ -15,7 +15,7 @@ export interface NotificationInput {
 }
 
 async function dispatchRealEmail(to: string, subject: string, textBody: string): Promise<{ sent: boolean; note: string }> {
-  const from = process.env.EMAIL_FROM || 'Howler Tickets <no-reply@howlertickets.com>';
+  const from = process.env.EMAIL_FROM || 'BookMyte <no-reply@bookmyte.com>';
 
   // Option 1: Resend API
   if (process.env.RESEND_API_KEY) {

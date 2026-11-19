@@ -605,12 +605,12 @@ export const platformTeamRelations = relations(platformTeam, ({ one }) => ({
 // Configurable global platform controls
 export const platformSettings = pgTable('platform_settings', {
   id: serial('id').primaryKey(),
-  platformName: text('platform_name').notNull().default('Howler Tickets'),
+  platformName: text('platform_name').notNull().default('BookMyte'),
   logo: text('logo'),
   currency: text('currency').notNull().default('R'),
   platformFeePercent: integer('platform_fee_percent').notNull().default(5),
   platformFixedFee: integer('platform_fixed_fee').notNull().default(10),
-  supportEmail: text('support_email').notNull().default('support@howlertickets.com'),
+  supportEmail: text('support_email').notNull().default('support@bookmyte.com'),
   businessApprovalRequired: integer('business_approval_required').notNull().default(1),
   eventApprovalRequired: integer('event_approval_required').notNull().default(0),
 });

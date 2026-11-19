@@ -75,7 +75,7 @@ export function MyTicketsWalletPage({ onNavigate }: { onNavigate: (path: string)
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.setItem('event-check-in:return-url', '/my-tickets');
+            window.sessionStorage.setItem('bookmyte:return-url', '/my-tickets');
             onNavigate('/login');
           }}
           className="rounded-xl bg-primary px-6 py-2.5 text-xs font-extrabold text-primary-foreground"
@@ -455,7 +455,7 @@ export function MyOrdersPage({ onNavigate }: { onNavigate: (path: string) => voi
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.setItem('event-check-in:return-url', '/my-orders');
+            window.sessionStorage.setItem('bookmyte:return-url', '/my-orders');
             onNavigate('/login');
           }}
           className="rounded-xl bg-primary px-6 py-2.5 text-xs font-extrabold text-primary-foreground"
@@ -640,7 +640,7 @@ export function CustomerProfilePage({ onNavigate }: { onNavigate: (path: string)
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.setItem('event-check-in:return-url', '/profile');
+            window.sessionStorage.setItem('bookmyte:return-url', '/profile');
             onNavigate('/login');
           }}
           className="rounded-xl bg-primary px-6 py-2.5 text-xs font-extrabold text-primary-foreground"

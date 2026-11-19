@@ -47,12 +47,12 @@ const ClerkWrapperContext = createContext<AuthContextType>({
   applyServerSession: () => {},
 });
 
-const LOCAL_USER_CACHE_KEY = 'event-check-in:auth-user';
+const LOCAL_USER_CACHE_KEY = 'bookmyte:auth-user';
 
 export function mergeLocalGuestCart(userUid: string) {
   try {
-    const guestRaw = window.localStorage.getItem('event-check-in:cart:guest');
-    const pendingRaw = window.localStorage.getItem('event-check-in:pending-checkout');
+    const guestRaw = window.localStorage.getItem('bookmyte:cart:guest');
+    const pendingRaw = window.localStorage.getItem('bookmyte:pending-checkout');
     const guestCart: Record<string, number> = guestRaw ? JSON.parse(guestRaw) : {};
     if (pendingRaw) {
       const p = JSON.parse(pendingRaw);
@@ -63,7 +63,7 @@ export function mergeLocalGuestCart(userUid: string) {
       }
     }
     if (Object.keys(guestCart).length > 0) {
-      const userKey = `event-check-in:cart:${userUid}`;
+      const userKey = `bookmyte:cart:${userUid}`;
       const existingRaw = window.localStorage.getItem(userKey);
       const existing: Record<string, number> = existingRaw ? JSON.parse(existingRaw) : {};
       const merged: Record<string, number> = { ...existing };
@@ -109,7 +109,7 @@ export function ClerkProvider({ children }: { children: React.ReactNode }) {
     getOrCreateCartSessionId();
 
     const initSession = async () => {
-      const existingToken = window.localStorage.getItem('event-check-in:session-token');
+      const existingToken = window.localStorage.getItem('bookmyte:session-token');
       if (existingToken) {
         setSessionToken(existingToken);
         setIdToken(existingToken);
@@ -236,15 +236,15 @@ export function useClerk() {
 export const isClerkMocked = true;
 
 function navigateAfterAuth(mePayload?: MeWorkspaceContext | null) {
-  const returnUrl = window.sessionStorage.getItem('event-check-in:return-url');
+  const returnUrl = window.sessionStorage.getItem('bookmyte:return-url');
   if (returnUrl) {
-    window.sessionStorage.removeItem('event-check-in:return-url');
+    window.sessionStorage.removeItem('bookmyte:return-url');
     window.location.href = returnUrl;
     return;
   }
 
-  const activeEvt = window.localStorage.getItem('event-check-in:active-event-id');
-  const guestCartStr = window.localStorage.getItem('event-check-in:cart:guest');
+  const activeEvt = window.localStorage.getItem('bookmyte:active-event-id');
+  const guestCartStr = window.localStorage.getItem('bookmyte:cart:guest');
   try {
     if (guestCartStr && activeEvt) {
       const parsed = JSON.parse(guestCartStr);
@@ -387,7 +387,7 @@ export function AuthForm({
       {!compact && (
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 inline-flex items-center justify-center rounded-xl bg-[#11100F] px-3.5 py-2 font-display text-2xl font-extrabold uppercase tracking-tight text-[#F2ECE1]">
-            <span className="text-primary">H</span>OWLER
+            <span className="text-primary">B</span>OOKMYTE
           </div>
           <h2 className="font-display text-3xl font-extrabold uppercase tracking-tight text-foreground">
             {titleOverride || (mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Reset Password')}

@@ -25,14 +25,14 @@ const styles = StyleSheet.create({
   },
   artwork: {
     width: 90,
-    backgroundColor: "#111827",
+    backgroundColor: "#11100F",
     padding: 16,
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
   },
   artworkTitle: {
-    color: "#c2ef50",
+    color: "#F13A13",
     fontSize: 9,
     fontWeight: "bold",
     letterSpacing: 1.5,
@@ -127,8 +127,8 @@ const styles = StyleSheet.create({
   },
   admit: {
     marginTop: 8,
-    backgroundColor: "#111827",
-    color: "#c2ef50",
+    backgroundColor: "#11100F",
+    color: "#F13A13",
     paddingHorizontal: 8,
     paddingVertical: 4,
     fontSize: 6,
@@ -180,13 +180,13 @@ export function TicketPdf({ ticket, qrDataUrl }: TicketPdfProps) {
   return (
     <Document
       title={`${ticket.eventName} - ${ticket.ticketNumber}`}
-      author="Howler Tickets Marketplace"
+      author="BookMyte Marketplace"
       subject="Digital Event Pass"
     >
       <Page size="A5" orientation="landscape" style={styles.page}>
         <View style={styles.ticket}>
           <View style={styles.artwork}>
-            <Text style={styles.artworkTitle}>EVENT PASS</Text>
+            <Text style={styles.artworkTitle}>BOOKMYTE PASS</Text>
             <Text style={styles.artworkBottom}>ADMIT ONE</Text>
           </View>
 
@@ -253,7 +253,7 @@ interface BulkTicketsPdfProps {
 
 export function BulkTicketsPdf({ tickets, qrDataUrls }: BulkTicketsPdfProps) {
   return (
-    <Document title="All Event Passes" author="Howler Tickets Marketplace" subject="Digital Passes">
+    <Document title="All BookMyte Passes" author="BookMyte Marketplace" subject="Digital Passes">
       {tickets.map((ticket) => {
         const dateDisplay = ticket.eventDate
           ? ticket.startTime
@@ -266,7 +266,7 @@ export function BulkTicketsPdf({ tickets, qrDataUrls }: BulkTicketsPdfProps) {
           <Page key={ticket.ticketNumber} size="A5" orientation="landscape" style={styles.page}>
             <View style={styles.ticket}>
               <View style={styles.artwork}>
-                <Text style={styles.artworkTitle}>EVENT PASS</Text>
+                <Text style={styles.artworkTitle}>BOOKMYTE PASS</Text>
                 <Text style={styles.artworkBottom}>ADMIT ONE</Text>
               </View>
 

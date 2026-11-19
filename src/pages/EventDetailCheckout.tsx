@@ -22,14 +22,14 @@ import TicketPdfButton from '../components/ticket/TicketPdfButton.tsx';
 import BulkTicketPdfButton from '../components/ticket/BulkTicketPdfButton.tsx';
 
 function getCartKey(uid?: string | null) {
-  return uid ? `event-check-in:cart:${uid}` : 'event-check-in:cart:guest';
+  return uid ? `bookmyte:cart:${uid}` : 'bookmyte:cart:guest';
 }
 
 function readLocalQuantities(uid?: string | null): Record<number, number> {
   try {
     const userRaw = uid ? window.localStorage.getItem(getCartKey(uid)) : null;
-    const guestRaw = window.localStorage.getItem('event-check-in:cart:guest');
-    const pendingRaw = window.localStorage.getItem('event-check-in:pending-checkout');
+    const guestRaw = window.localStorage.getItem('bookmyte:cart:guest');
+    const pendingRaw = window.localStorage.getItem('bookmyte:pending-checkout');
     const merged: Record<number, number> = {};
     [guestRaw, userRaw].forEach((raw) => {
       if (!raw) return;
@@ -58,12 +58,12 @@ function persistLocalQuantities(uid: string | null | undefined, eventId: number,
     Object.entries(quantities).forEach(([k, v]) => {
       if (Number(v) > 0) clean[Number(k)] = Number(v);
     });
-    window.localStorage.setItem('event-check-in:active-event-id', String(eventId));
-    window.localStorage.setItem('event-check-in:cart:guest', JSON.stringify(clean));
+    window.localStorage.setItem('bookmyte:active-event-id', String(eventId));
+    window.localStorage.setItem('bookmyte:cart:guest', JSON.stringify(clean));
     if (uid) {
       window.localStorage.setItem(getCartKey(uid), JSON.stringify(clean));
     }
-    window.localStorage.setItem('event-check-in:pending-checkout', JSON.stringify({ eventId, quantities: clean }));
+    window.localStorage.setItem('bookmyte:pending-checkout', JSON.stringify({ eventId, quantities: clean }));
   } catch {}
 }
 
@@ -545,7 +545,7 @@ export function CartAndCheckoutPage({
         if (preferred) setSelectedGateway(preferred.id);
       }
 
-      const activeSavedId = Number(window.localStorage.getItem('event-check-in:active-event-id') || 0);
+      const activeSavedId = Number(window.localStorage.getItem('bookmyte:active-event-id') || 0);
       const targetEventId = queryEventId || cartRes.data?.eventId || activeSavedId;
 
       if (!targetEventId) {
@@ -663,7 +663,7 @@ export function CartAndCheckoutPage({
     if (event) {
       persistLocalQuantities(user?.id, event.id, quantities);
     }
-    window.sessionStorage.setItem('event-check-in:return-url', `/checkout${event ? `?event=${event.id}` : ''}`);
+    window.sessionStorage.setItem('bookmyte:return-url', `/checkout${event ? `?event=${event.id}` : ''}`);
     onNavigate(`/${mode}`);
   };
 
@@ -724,8 +724,8 @@ export function CartAndCheckoutPage({
   };
 
   const clearLocalCart = () => {
-    window.localStorage.removeItem('event-check-in:cart:guest');
-    window.localStorage.removeItem('event-check-in:pending-checkout');
+    window.localStorage.removeItem('bookmyte:cart:guest');
+    window.localStorage.removeItem('bookmyte:pending-checkout');
     if (user?.id) window.localStorage.removeItem(getCartKey(user.id));
   };
 

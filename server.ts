@@ -56,14 +56,14 @@ const isProduction = process.env.NODE_ENV === 'production';
 async function ensureDefaultsAndPasswords() {
   try {
     // 1. Ensure default platform settings & commission rule exist
-    const settingsCount = await db.select({ count: sql<number>`count(*)` }).from(platformSettings);
-    if (Number(settingsCount[0].count) === 0) {
+    const existingSettings = await db.select().from(platformSettings).limit(1);
+    if (existingSettings.length === 0) {
       await db.insert(platformSettings).values({
-        platformName: 'Howler Tickets',
+        platformName: 'BookMyte',
         currency: 'ZAR',
         platformFeePercent: 5,
         platformFixedFee: 0,
-        supportEmail: 'support@howlertickets.com',
+        supportEmail: 'support@bookmyte.com',
         businessApprovalRequired: 1,
         eventApprovalRequired: 0,
       });
@@ -97,7 +97,7 @@ async function ensureDefaultsAndPasswords() {
 
     // 2. Ensure core seeded accounts exist and have scrypt password hashes if missing
     const coreUsers = [
-      { uid: 'super-admin-uid', email: 'admin@howlertickets.com', role: 'superadmin', firstName: 'Admin', lastName: 'Boss', verified: 1 },
+      { uid: 'super-admin-uid', email: 'admin@bookmyte.com', role: 'superadmin', firstName: 'Admin', lastName: 'Boss', verified: 1 },
       { uid: 'user_2N6x2B5p9a8K7b4C1d9E', email: 'jordan.scott@northstarsummit.com', role: 'organizer', firstName: 'Jordan', lastName: 'Scott', verified: 1 },
       { uid: 'uid-maya', email: 'maya@example.com', role: 'attendee', firstName: 'Maya', lastName: 'Chen', verified: 1 },
     ];
@@ -120,11 +120,18 @@ async function ensureDefaultsAndPasswords() {
             emailVerified: cu.verified,
           })
           .returning();
-      } else if (!existing.passwordHash) {
-        await db
-          .update(users)
-          .set({ passwordHash: hashPassword('password123'), emailVerified: cu.verified })
-          .where(eq(users.id, existing.id));
+      } else {
+        const updates: Record<string, any> = {};
+        if (!existing.passwordHash) {
+          updates.passwordHash = hashPassword('password123');
+          updates.emailVerified = cu.verified;
+        }
+        if (cu.uid === 'super-admin-uid' && existing.email !== 'admin@bookmyte.com') {
+          updates.email = 'admin@bookmyte.com';
+        }
+        if (Object.keys(updates).length > 0) {
+          await db.update(users).set(updates).where(eq(users.id, existing.id));
+        }
       }
 
       if (cu.role === 'superadmin') {
@@ -138,7 +145,7 @@ async function ensureDefaultsAndPasswords() {
     // Ensure any legacy users without passwordHash get default passwordHash=null left safely or backfilled
     const unverifiedDemo = await db.select().from(users).where(isNull(users.passwordHash));
     for (const u of unverifiedDemo) {
-      if (u.email.endsWith('@example.com') || u.email.endsWith('@northstarsummit.com') || u.email.endsWith('@howlertickets.com')) {
+      if (u.email.endsWith('@example.com') || u.email.endsWith('@northstarsummit.com') || u.email.endsWith('@bookmyte.com')) {
         await db.update(users).set({ passwordHash: hashPassword('password123') }).where(eq(users.id, u.id));
       }
     }

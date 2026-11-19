@@ -18,7 +18,7 @@ function getCurrentFullUrl() {
 
 function getCartCountBadge(): number {
   try {
-    const raw = window.localStorage.getItem('event-check-in:cart:guest');
+    const raw = window.localStorage.getItem('bookmyte:cart:guest');
     if (!raw) return 0;
     const obj = JSON.parse(raw);
     return Object.values(obj).reduce((s: number, v: any) => s + (Number(v) > 0 ? Number(v) : 0), 0);
@@ -62,7 +62,7 @@ function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     try {
-      return window.localStorage.getItem('event-check-in:theme') === 'dark';
+      return window.localStorage.getItem('bookmyte:theme') === 'dark';
     } catch {
       return false;
     }
@@ -72,7 +72,7 @@ function AppShell() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
     try {
-      window.localStorage.setItem('event-check-in:theme', darkMode ? 'dark' : 'light');
+      window.localStorage.setItem('bookmyte:theme', darkMode ? 'dark' : 'light');
     } catch {}
   }, [darkMode]);
 
@@ -107,7 +107,7 @@ function AppShell() {
 
   const openSignInPreservingReturn = () => {
     if (!['/login', '/register', '/sign-in', '/sign-up'].includes(pathname)) {
-      window.sessionStorage.setItem('event-check-in:return-url', route);
+      window.sessionStorage.setItem('bookmyte:return-url', route);
     }
     navigate('/login');
   };
@@ -214,7 +214,7 @@ function AppShell() {
             onClick={() => navigate('/discover')}
             className="font-display text-2xl sm:text-[28px] font-extrabold uppercase tracking-tight text-foreground whitespace-nowrap shrink-0 leading-none"
           >
-            <span className="text-primary">H</span>OWLER TICKETS
+            <span className="text-primary">B</span>OOKMYTE
           </button>
 
           {/* Zone 2: Concise single-line nav links */}
@@ -395,7 +395,7 @@ function AppShell() {
         <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-2.5">
             <span className="font-display text-lg font-extrabold uppercase tracking-tight text-foreground">
-              <span className="text-primary">H</span>OWLER TICKETS
+              <span className="text-primary">B</span>OOKMYTE
             </span>
             <span aria-hidden="true">·</span>
             <span>South African Live Event Ticketing & Marketplace</span>

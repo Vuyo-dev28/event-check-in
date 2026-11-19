@@ -252,7 +252,7 @@ export default function OrganizerDashboard({
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.setItem('event-check-in:return-url', window.location.pathname);
+            window.sessionStorage.setItem('bookmyte:return-url', window.location.pathname);
             onNavigate('/login');
           }}
           className="rounded-xl bg-primary px-6 py-3 text-xs font-extrabold text-primary-foreground"
@@ -711,7 +711,7 @@ export default function OrganizerDashboard({
                     onChange={(e) => setObDraft({ ...obDraft, agreementAccepted: e.target.checked })}
                     className="h-4 w-4 rounded"
                   />
-                  I accept the Howler Tickets Organiser Agreement and Payout Terms.
+                  I accept the BookMyte Organiser Agreement and Payout Terms.
                 </label>
               </div>
             )}

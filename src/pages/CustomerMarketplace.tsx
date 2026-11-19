@@ -95,7 +95,7 @@ export default function CustomerMarketplace({
   const toggleFav = async (e: React.MouseEvent, eventId: number) => {
     e.stopPropagation();
     if (!isSignedIn) {
-      window.sessionStorage.setItem('event-check-in:return-url', window.location.pathname + window.location.search);
+      window.sessionStorage.setItem('bookmyte:return-url', window.location.pathname + window.location.search);
       onNavigate('/login');
       return;
     }
@@ -608,7 +608,7 @@ export default function CustomerMarketplace({
               FOR EVENT ORGANISERS
             </span>
             <h2 className="font-display text-3xl sm:text-4xl font-extrabold uppercase tracking-tight leading-none">
-              LAUNCH YOUR FESTIVAL OR SHOW ON <span className="text-primary">HOWLER</span>
+              LAUNCH YOUR FESTIVAL OR SHOW ON <span className="text-primary">BOOKMYTE</span>
             </h2>
             <p className="text-sm text-[#F2ECE1]/75 leading-relaxed">
               Manage multi-tier ZAR ticket inventory, scan QR passes at the gate, and track instant payouts from one unified organiser portal.

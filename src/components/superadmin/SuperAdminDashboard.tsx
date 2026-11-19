@@ -39,11 +39,11 @@ export default function SuperAdminDashboard({
   const [data, setData] = useState<any | null>(null);
   const [rules, setRules] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({
-    platformName: 'Howler Tickets',
+    platformName: 'BookMyte',
     currency: 'ZAR',
     platformFeePercent: 5,
     platformFixedFee: 10,
-    supportEmail: 'support@howlertickets.com',
+    supportEmail: 'support@bookmyte.com',
     businessApprovalRequired: true,
     eventApprovalRequired: false,
   });
@@ -103,7 +103,7 @@ export default function SuperAdminDashboard({
         <button
           type="button"
           onClick={() => {
-            window.sessionStorage.setItem('event-check-in:return-url', '/admin');
+            window.sessionStorage.setItem('bookmyte:return-url', '/admin');
             onNavigate('/login');
           }}
           className="rounded-xl bg-primary px-6 py-2.5 text-xs font-extrabold text-primary-foreground"
